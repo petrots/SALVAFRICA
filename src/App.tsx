@@ -27,6 +27,7 @@ import { DepositSheet } from './components/DepositSheet';
 import { FeedTab } from './components/FeedTab';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { SettingsSheet } from './components/SettingsSheet';
+import { triggerHaptic } from './utils/haptics';
 
 type ActiveTab = 'home' | 'feed';
 
@@ -34,6 +35,7 @@ export default function App() {
   const [vault, setVault] = useState<Vault>(DEFAULT_VAULT);
   const [vaultLoaded, setVaultLoaded] = useState(false);
   const [contributions, setContributions] = useState<Contribution[]>([]);
+  const [contributionsLoaded, setContributionsLoaded] = useState(false);
   const ensuringVaultRef = useRef(false);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
@@ -42,6 +44,10 @@ export default function App() {
 
   const [justDepositedKey, setJustDepositedKey] = useState(0);
   const [milestoneBanner, setMilestoneBanner] = useState<string | null>(null);
+  const [celebratedMilestoneEvent, setCelebratedMilestoneEvent] = useState<{
+    key: number;
+    index: number;
+  } | null>(null);
   const [isDark, setIsDark] = useState<boolean>(() => {
     try {
       return window.localStorage.getItem('salvafrica_theme') === 'dark';
@@ -117,6 +123,7 @@ export default function App() {
       contribQuery,
       (snap) => {
         setContributions(snap.docs.map((d) => d.data() as Contribution));
+        setContributionsLoaded(true);
       },
       (error) => {
         handleFirestoreError(error, OperationType.LIST, contribPath);
@@ -156,27 +163,130 @@ export default function App() {
     };
   }, [contributions]);
 
-  const handleDepositSuccess = (addedAmount: number) => {
-    setJustDepositedKey((k) => k + 1);
-    const target = Math.max(1, vault.targetAmount);
-    const prevPct = (stats.totalSaved / target) * 100;
-    const nextPct = ((stats.totalSaved + addedAmount) / target) * 100;
+  const totalSavedRef = useRef(stats.totalSaved);
+  totalSavedRef.current = stats.totalSaved;
 
-    const crossed = MILESTONES.filter(
-      (m) => prevPct < m.percent && nextPct >= m.percent
+  const celebratedScopeRef = useRef<string | null>(null);
+  const celebratedMilestonesRef = useRef<Set<number>>(new Set());
+  const celebrationKeyRef = useRef(0);
+  const lastMilestoneEventTimeRef = useRef(0);
+  const pendingPreDepositTotalRef = useRef<number | null>(null);
+  const bannerTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (bannerTimerRef.current !== null) {
+        window.clearTimeout(bannerTimerRef.current);
+      }
+    };
+  }, []);
+
+  const evaluateMilestoneCelebration = (effectiveSaved: number): boolean => {
+    if (!vaultLoaded || !contributionsLoaded) return false;
+
+    const target = Math.max(1, vault.targetAmount);
+    const scopeKey = `salvafrica_celebrated_${vault.id}_${target}`;
+    const pct = (Math.max(0, effectiveSaved) / target) * 100;
+
+    if (celebratedScopeRef.current !== scopeKey) {
+      const initialSet = new Set<number>();
+      try {
+        const raw = window.localStorage.getItem(scopeKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            for (const item of parsed) {
+              if (typeof item === 'number') initialSet.add(item);
+            }
+          }
+        }
+      } catch {
+        // Ignore storage restrictions
+      }
+      // Seed already-unlocked milestones on initial load or target change without firing celebration
+      for (const m of MILESTONES) {
+        if (pct >= m.percent) {
+          initialSet.add(m.percent);
+        }
+      }
+      celebratedMilestonesRef.current = initialSet;
+      celebratedScopeRef.current = scopeKey;
+      try {
+        window.localStorage.setItem(scopeKey, JSON.stringify([...initialSet]));
+      } catch {
+        // Ignore storage restrictions
+      }
+      return false;
+    }
+
+    const newlyUnlocked = MILESTONES.filter(
+      (m) => pct >= m.percent && !celebratedMilestonesRef.current.has(m.percent)
     );
 
-    if (crossed.length > 0) {
-      const highest = crossed[crossed.length - 1];
-      setMilestoneBanner(`Traguardo sbloccato: ${highest.label}`);
-      confetti({
-        particleCount: highest.percent === 100 ? 140 : 85,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#E86A52', '#1A6B8A', '#D99B38', '#FAF8F5'],
-      });
-      setTimeout(() => setMilestoneBanner(null), 5000);
+    if (newlyUnlocked.length === 0) {
+      return false;
     }
+
+    for (const m of newlyUnlocked) {
+      celebratedMilestonesRef.current.add(m.percent);
+    }
+    try {
+      window.localStorage.setItem(
+        scopeKey,
+        JSON.stringify([...celebratedMilestonesRef.current])
+      );
+    } catch {
+      // Ignore storage restrictions
+    }
+
+    const highest = newlyUnlocked[newlyUnlocked.length - 1];
+    const highestIdx = MILESTONES.findIndex((m) => m.percent === highest.percent);
+    lastMilestoneEventTimeRef.current = Date.now();
+
+    triggerHaptic('milestone');
+    setCelebratedMilestoneEvent({
+      key: ++celebrationKeyRef.current,
+      index: highestIdx,
+    });
+    setMilestoneBanner(`Traguardo sbloccato: ${highest.label}`);
+
+    confetti({
+      particleCount: highest.percent === 100 ? 140 : 85,
+      spread: 70,
+      origin: { y: 0.6 },
+      colors: ['#E86A52', '#1A6B8A', '#D99B38', '#FAF8F5'],
+      disableForReducedMotion: true,
+    });
+
+    if (bannerTimerRef.current !== null) {
+      window.clearTimeout(bannerTimerRef.current);
+    }
+    bannerTimerRef.current = window.setTimeout(() => {
+      setMilestoneBanner(null);
+      bannerTimerRef.current = null;
+    }, 5000);
+
+    return true;
+  };
+
+  useEffect(() => {
+    evaluateMilestoneCelebration(stats.totalSaved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultLoaded, contributionsLoaded, vault.id, vault.targetAmount, stats.totalSaved]);
+
+  const handleDepositStart = () => {
+    pendingPreDepositTotalRef.current = totalSavedRef.current;
+  };
+
+  const handleDepositSuccess = (addedAmount: number): boolean => {
+    setJustDepositedKey((k) => k + 1);
+    const baseline = pendingPreDepositTotalRef.current ?? totalSavedRef.current;
+    pendingPreDepositTotalRef.current = null;
+    const effectiveTotal = Math.max(totalSavedRef.current, baseline + addedAmount);
+
+    const celebratedNow = evaluateMilestoneCelebration(effectiveTotal);
+    const celebratedViaSnapshot = Date.now() - lastMilestoneEventTimeRef.current < 2000;
+    return celebratedNow || celebratedViaSnapshot;
   };
 
   if (!vaultLoaded) {
@@ -248,11 +358,10 @@ export default function App() {
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}
-              aria-label="Impostazioni salvadanaio"
-              className="md:hidden min-h-[40px] px-3 rounded-xl bg-[#F2ECE3] dark:bg-[#1E3952] text-xs font-semibold text-[#122638] dark:text-[#FAF6F0] hover:bg-[#E6DDD1] dark:hover:bg-[#264561] transition-colors inline-flex items-center gap-1.5"
+              aria-label="Impostazioni"
+              className="md:hidden min-h-[44px] min-w-[44px] -mr-2 rounded-full text-[#122638]/80 dark:text-[#FAF6F0]/85 hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952] active:bg-[#E6DDD1] dark:active:bg-[#264561] transition-colors flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A]/50"
             >
-              <Settings className="w-4 h-4 text-[#5B6B79] dark:text-[#9DB0C0]" />
-              <span>Impostazioni</span>
+              <Settings className="w-5 h-5 stroke-[1.9]" />
             </button>
 
             <button
@@ -290,6 +399,7 @@ export default function App() {
               partnerACount={stats.partnerACount}
               partnerBCount={stats.partnerBCount}
               justDepositedKey={justDepositedKey}
+              celebratedMilestoneEvent={celebratedMilestoneEvent}
               onOpenDeposit={() => setDepositOpen(true)}
               onNavigateFeed={() => setActiveTab('feed')}
             />
@@ -374,6 +484,7 @@ export default function App() {
         isOpen={depositOpen}
         onClose={() => setDepositOpen(false)}
         vault={vault}
+        onDepositStart={handleDepositStart}
         onSuccessDeposit={handleDepositSuccess}
       />
 

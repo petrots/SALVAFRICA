@@ -21,7 +21,6 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
   onToggleTheme,
 }) => {
   const [title, setTitle] = useState(vault.title);
-  const [destination, setDestination] = useState(vault.destination);
   const [targetAmount, setTargetAmount] = useState(String(vault.targetAmount));
   const [partnerAName, setPartnerAName] = useState(vault.partnerAName);
   const [partnerBName, setPartnerBName] = useState(vault.partnerBName);
@@ -33,7 +32,6 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setTitle(vault.title);
-    setDestination(vault.destination);
     setTargetAmount(String(vault.targetAmount));
     setPartnerAName(vault.partnerAName);
     setPartnerBName(vault.partnerBName);
@@ -75,7 +73,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
     try {
       await updateVaultSettings(vault.id, {
         title,
-        destination,
+        destination: vault.destination,
         targetAmount: Number(targetAmount) || vault.targetAmount,
         partnerAName,
         partnerBName,
@@ -206,33 +204,18 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
               </div>
 
               <form onSubmit={handleSave} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] mb-1">
-                      Titolo vacanza
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      maxLength={APP_LIMITS.titleMax}
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      className="w-full min-h-[44px] rounded-xl border border-[#E6DDD1] dark:border-[#264561] bg-[#FAF6F0] dark:bg-[#112436] px-3.5 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none focus:border-[#1A6B8A]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] mb-1">
-                      Destinazione
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      maxLength={APP_LIMITS.destinationMax}
-                      value={destination}
-                      onChange={(e) => setDestination(e.target.value)}
-                      className="w-full min-h-[44px] rounded-xl border border-[#E6DDD1] dark:border-[#264561] bg-[#FAF6F0] dark:bg-[#112436] px-3.5 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none focus:border-[#1A6B8A]"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] mb-1">
+                    Titolo vacanza
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={APP_LIMITS.titleMax}
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="w-full min-h-[44px] rounded-xl border border-[#E6DDD1] dark:border-[#264561] bg-[#FAF6F0] dark:bg-[#112436] px-3.5 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none focus:border-[#1A6B8A]"
+                  />
                 </div>
 
                 <div>
