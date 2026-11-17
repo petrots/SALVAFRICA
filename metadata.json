@@ -1,0 +1,8 @@
+{
+  "name": "SALVAFRICA",
+  "description": "Salvadanaio condiviso di coppia per finanziare la prossima vacanza con piccole attività extra.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

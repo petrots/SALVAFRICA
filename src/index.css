@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+
+  --color-sand-canvas: #FAF6F0;
+  --color-sand-surface: #F2ECE3;
+  --color-sand-border: #E6DDD1;
+  --color-ocean-ink: #122638;
+  --color-ocean-slate: #5B6B79;
+  --color-coral-sunset: #E86A52;
+  --color-coral-deep: #D1533C;
+  --color-ocean-blue: #1A6B8A;
+  --color-ocean-light: #2D8FB3;
+  --color-sun-gold: #E09F3E;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body {
+    position: fixed;
+    inset: 0;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    background-color: #FAF6F0;
+    color: #122638;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1, h2, .font-display {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+.pt-safe {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+
+@keyframes wave-drift {
+  0% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-24%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes wave-drift-reverse {
+  0% {
+    transform: translateX(-24%);
+  }
+  50% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-24%);
+  }
+}
+
+@keyframes sun-float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-wave-slow {
+  animation: wave-drift 6.5s ease-in-out infinite;
+}
+
+.animate-wave-reverse {
+  animation: wave-drift-reverse 8.5s ease-in-out infinite;
+}
+
+.animate-sun-float {
+  animation: sun-float 5.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-wave-slow,
+  .animate-wave-reverse,
+  .animate-sun-float {
+    animation: none;
+  }
+}

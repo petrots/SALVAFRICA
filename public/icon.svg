@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FAF8F5"/>
+      <stop offset="55%" stop-color="#FDE8DF"/>
+      <stop offset="100%" stop-color="#F7C7B8"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F29E4C"/>
+      <stop offset="100%" stop-color="#E86A52"/>
+    </linearGradient>
+    <linearGradient id="ocean" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2285A8"/>
+      <stop offset="100%" stop-color="#134E68"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#sky)"/>
+  <!-- Horizon Sun -->
+  <circle cx="256" cy="242" r="96" fill="url(#sun)"/>
+  <!-- Sun reflection -->
+  <ellipse cx="256" cy="242" rx="118" ry="118" fill="none" stroke="#E86A52" stroke-opacity="0.18" stroke-width="10"/>
+  <!-- Jar / Coin Rim Accent -->
+  <path d="M96 310 Q176 276 256 310 T416 310 L416 440 C416 472 384 512 344 512 L168 512 C128 512 96 472 96 440 Z" fill="none"/>
+  <!-- Calm Mediterranean Ocean Waves -->
+  <path d="M0 304 Q96 270 192 304 T384 304 T512 296 L512 512 L0 512 Z" fill="url(#ocean)"/>
+  <path d="M0 356 Q110 326 220 356 T440 356 T512 348 L512 512 L0 512 Z" fill="#1A6B8A" opacity="0.72"/>
+  <path d="M0 408 Q128 386 256 408 T512 404 L512 512 L0 512 Z" fill="#132638" opacity="0.45"/>
+  <!-- Small Gold Coin / Sun Sparkle -->
+  <circle cx="256" cy="182" r="18" fill="#FAF8F5" opacity="0.45"/>
+</svg>

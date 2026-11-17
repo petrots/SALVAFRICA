@@ -1,0 +1,204 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: deny all unspecified paths by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isVaultMember(vaultData) {
+      return isSignedIn() && request.auth.uid in vaultData.memberUids;
+    }
+
+    function isParentVaultMember(vaultId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/vaults/$(vaultId))
+        && request.auth.uid in get(/databases/$(database)/documents/vaults/$(vaultId)).data.memberUids;
+    }
+
+    function isValidVault(data) {
+      return data.keys().hasAll([
+          'id', 'title', 'destination', 'targetAmount',
+          'partnerAName', 'partnerBName', 'loveNote',
+          'ownerUid', 'memberUids', 'inviteCode', 'joinedInviteCode',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'title', 'destination', 'targetAmount',
+          'partnerAName', 'partnerBName', 'loveNote',
+          'ownerUid', 'memberUids', 'inviteCode', 'joinedInviteCode',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id.size() <= 64
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 80
+        && data.destination is string && data.destination.size() >= 1 && data.destination.size() <= 80
+        && data.targetAmount is number && data.targetAmount > 0 && data.targetAmount <= 1000000
+        && data.partnerAName is string && data.partnerAName.size() >= 1 && data.partnerAName.size() <= 40
+        && data.partnerBName is string && data.partnerBName.size() >= 1 && data.partnerBName.size() <= 40
+        && data.loveNote is string && data.loveNote.size() <= 240
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128
+        && data.memberUids is list && data.memberUids.size() >= 1 && data.memberUids.size() <= 2
+        && data.memberUids[0] is string && data.memberUids[0].size() >= 1 && data.memberUids[0].size() <= 128
+        && (data.memberUids.size() == 1 || (data.memberUids[1] is string && data.memberUids[1].size() >= 1 && data.memberUids[1].size() <= 128))
+        && data.inviteCode is string && data.inviteCode.size() >= 8 && data.inviteCode.size() <= 24 && data.inviteCode.matches('^[A-Z0-9]+$')
+        && data.joinedInviteCode is string && data.joinedInviteCode.size() <= 24
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInvite(data) {
+      return data.keys().hasAll([
+          'inviteCode', 'vaultId', 'ownerUid', 'vaultTitle',
+          'destination', 'partnerAName', 'partnerBName', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'inviteCode', 'vaultId', 'ownerUid', 'vaultTitle',
+          'destination', 'partnerAName', 'partnerBName', 'createdAt'
+        ])
+        && data.inviteCode is string && data.inviteCode.size() >= 8 && data.inviteCode.size() <= 24 && data.inviteCode.matches('^[A-Z0-9]+$')
+        && isValidId(data.vaultId) && data.vaultId.size() <= 64
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128
+        && data.vaultTitle is string && data.vaultTitle.size() >= 1 && data.vaultTitle.size() <= 80
+        && data.destination is string && data.destination.size() >= 1 && data.destination.size() <= 80
+        && data.partnerAName is string && data.partnerAName.size() >= 1 && data.partnerAName.size() <= 40
+        && data.partnerBName is string && data.partnerBName.size() >= 1 && data.partnerBName.size() <= 40
+        && data.createdAt is timestamp;
+    }
+
+    function isValidContribution(data) {
+      return data.keys().hasAll([
+          'id', 'amount', 'partnerKey', 'partnerName', 'sourceTag', 'note',
+          'reactionHeart', 'reactionToast', 'reactionPlane', 'reactionFire',
+          'authorUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'amount', 'partnerKey', 'partnerName', 'sourceTag', 'note',
+          'reactionHeart', 'reactionToast', 'reactionPlane', 'reactionFire',
+          'authorUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id.size() <= 64
+        && data.amount is number && data.amount > 0 && data.amount <= 100000
+        && data.partnerKey is string && (data.partnerKey == 'A' || data.partnerKey == 'B')
+        && data.partnerName is string && data.partnerName.size() >= 1 && data.partnerName.size() <= 40
+        && data.sourceTag is string && data.sourceTag.size() >= 1 && data.sourceTag.size() <= 50
+        && data.note is string && data.note.size() <= 200
+        && data.reactionHeart is bool
+        && data.reactionToast is bool
+        && data.reactionPlane is bool
+        && data.reactionFire is bool
+        && data.authorUid is string && data.authorUid.size() >= 1 && data.authorUid.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /vaultInvites/{inviteCode} {
+      allow get: if isSignedIn() && isValidId(inviteCode) && inviteCode.size() >= 8 && inviteCode.size() <= 24;
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidId(inviteCode)
+        && isValidInvite(incoming())
+        && incoming().inviteCode == inviteCode
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && existsAfter(/databases/$(database)/documents/vaults/$(incoming().vaultId));
+      allow update: if false;
+      allow delete: if isSignedIn() && existing().ownerUid == request.auth.uid;
+    }
+
+    match /vaults/{vaultId} {
+      allow get: if isValidId(vaultId) && isVaultMember(existing());
+      allow list: if isSignedIn() && request.auth.uid in resource.data.memberUids;
+      allow create: if isSignedIn()
+        && isValidId(vaultId)
+        && isValidVault(incoming())
+        && incoming().id == vaultId
+        && incoming().ownerUid == request.auth.uid
+        && incoming().memberUids.size() == 1
+        && incoming().memberUids[0] == request.auth.uid
+        && incoming().joinedInviteCode == ''
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(vaultId) && isSignedIn() && isValidVault(incoming()) && (
+        // Action 1: Second partner joins using the private inviteCode
+        (
+          !(request.auth.uid in existing().memberUids)
+          && existing().memberUids.size() == 1
+          && incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'joinedInviteCode', 'updatedAt'])
+          && incoming().memberUids.size() == 2
+          && incoming().memberUids[0] == existing().ownerUid
+          && incoming().memberUids[1] == request.auth.uid
+          && incoming().joinedInviteCode == existing().inviteCode
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+        )
+        ||
+        // Action 2: Existing partner updates vault details or love note
+        (
+          isVaultMember(existing())
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'destination', 'targetAmount', 'partnerAName', 'partnerBName', 'loveNote', 'updatedAt'
+          ])
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().memberUids == existing().memberUids
+          && incoming().inviteCode == existing().inviteCode
+          && incoming().joinedInviteCode == existing().joinedInviteCode
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+        )
+      );
+      allow delete: if isValidId(vaultId) && isSignedIn() && existing().ownerUid == request.auth.uid;
+
+      match /contributions/{contributionId} {
+        allow get: if isValidId(vaultId) && isValidId(contributionId) && isParentVaultMember(vaultId);
+        allow list: if isValidId(vaultId) && isParentVaultMember(vaultId);
+        allow create: if isValidId(vaultId)
+          && isValidId(contributionId)
+          && isSignedIn()
+          && isValidContribution(incoming())
+          && incoming().id == contributionId
+          && incoming().authorUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && isParentVaultMember(vaultId);
+        allow update: if isValidId(vaultId)
+          && isValidId(contributionId)
+          && isSignedIn()
+          && isValidContribution(incoming())
+          && isParentVaultMember(vaultId)
+          && incoming().id == existing().id
+          && incoming().authorUid == existing().authorUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            // Action 1: Partner toggles reactions
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'reactionHeart', 'reactionToast', 'reactionPlane', 'reactionFire', 'updatedAt'
+            ])
+            ||
+            // Action 2: Author or partner edits deposit note/source/partner/amount
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'amount', 'partnerKey', 'partnerName', 'sourceTag', 'note', 'updatedAt'
+            ])
+          );
+        allow delete: if isValidId(vaultId) && isValidId(contributionId) && isParentVaultMember(vaultId);
+      }
+    }
+  }
+}
