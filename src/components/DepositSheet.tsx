@@ -250,7 +250,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="Es. Venduta giacca su Vinted · Per l’Africa"
-                  className="w-full min-h-[44px] rounded-xl border border-[#E6DDD1] bg-[#FAF6F0] px-3.5 text-sm text-[#122638] focus:outline-none focus:border-[#1A6B8A]"
+                  className="w-full min-h-[44px] rounded-xl border border-[#E6DDD1] bg-[#FAF6F0] px-3.5 text-base text-[#122638] focus:outline-none focus:border-[#1A6B8A]"
                 />
               </div>
 

@@ -176,7 +176,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               value={noteDraft}
               onChange={(e) => setNoteDraft(e.target.value)}
               placeholder="Scrivi un pensiero o motto per il viaggio..."
-              className="flex-1 min-h-[44px] rounded-xl border border-[#E6DDD1] bg-[#FAF6F0] px-3.5 text-sm text-[#122638] focus:outline-none focus:border-[#E86A52]"
+              className="flex-1 min-h-[44px] rounded-xl border border-[#E6DDD1] bg-[#FAF6F0] px-3.5 text-base text-[#122638] focus:outline-none focus:border-[#E86A52]"
               autoFocus
             />
             <div className="flex items-center gap-2 shrink-0">

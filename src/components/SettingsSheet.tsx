@@ -166,7 +166,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                       maxLength={APP_LIMITS.titleMax}
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      className="w-full min-h-[44px] rounded-xl border border-[#E8E2D9] bg-[#FAF8F5] px-3.5 text-sm text-[#132638]"
+                      className="w-full min-h-[44px] rounded-xl border border-[#E8E2D9] bg-[#FAF8F5] px-3.5 text-base text-[#132638]"
                     />
                   </div>
                   <div>
@@ -179,7 +179,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                       maxLength={APP_LIMITS.destinationMax}
                       value={destination}
                       onChange={(e) => setDestination(e.target.value)}
-                      className="w-full min-h-[44px] rounded-xl border border-[#E8E2D9] bg-[#FAF8F5] px-3.5 text-sm text-[#132638]"
+                      className="w-full min-h-[44px] rounded-xl border border-[#E8E2D9] bg-[#FAF8F5] px-3.5 text-base text-[#132638]"
                     />
                   </div>
                 </div>
@@ -195,7 +195,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                     max={1000000}
                     value={targetAmount}
                     onChange={(e) => setTargetAmount(e.target.value)}
-                    className="w-full min-h-[44px] rounded-xl border border-[#E8E2D9] bg-[#FAF8F5] px-3.5 text-sm font-semibold tabular-nums text-[#132638]"
+                    className="w-full min-h-[44px] rounded-xl border border-[#E8E2D9] bg-[#FAF8F5] px-3.5 text-base font-semibold tabular-nums text-[#132638]"
                   />
                 </div>
 
@@ -210,7 +210,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                       maxLength={APP_LIMITS.partnerNameMax}
                       value={partnerAName}
                       onChange={(e) => setPartnerAName(e.target.value)}
-                      className="w-full min-h-[44px] rounded-xl border border-[#E8E2D9] bg-[#FAF8F5] px-3.5 text-sm text-[#132638]"
+                      className="w-full min-h-[44px] rounded-xl border border-[#E8E2D9] bg-[#FAF8F5] px-3.5 text-base text-[#132638]"
                     />
                   </div>
                   <div>
@@ -223,7 +223,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                       maxLength={APP_LIMITS.partnerNameMax}
                       value={partnerBName}
                       onChange={(e) => setPartnerBName(e.target.value)}
-                      className="w-full min-h-[44px] rounded-xl border border-[#E8E2D9] bg-[#FAF8F5] px-3.5 text-sm text-[#132638]"
+                      className="w-full min-h-[44px] rounded-xl border border-[#E8E2D9] bg-[#FAF8F5] px-3.5 text-base text-[#132638]"
                     />
                   </div>
                 </div>
@@ -237,7 +237,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                     maxLength={APP_LIMITS.loveNoteMax}
                     value={loveNote}
                     onChange={(e) => setLoveNote(e.target.value)}
-                    className="w-full min-h-[44px] rounded-xl border border-[#E8E2D9] bg-[#FAF8F5] px-3.5 text-sm text-[#132638]"
+                    className="w-full min-h-[44px] rounded-xl border border-[#E8E2D9] bg-[#FAF8F5] px-3.5 text-base text-[#132638]"
                   />
                 </div>
 
