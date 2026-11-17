@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   collection,
+  doc,
   onSnapshot,
   orderBy,
   query,
-  where,
 } from 'firebase/firestore';
 import confetti from 'canvas-confetti';
 import {
@@ -15,9 +14,11 @@ import {
   Settings,
   Sparkles,
 } from 'lucide-react';
-import { auth, db, handleFirestoreError, OperationType } from './firebase';
+import { db, handleFirestoreError, OperationType } from './firebase';
+import { DEFAULT_VAULT, ensureMainVaultExists } from './services/vaultService';
 import {
   Contribution,
+  MAIN_VAULT_ID,
   MILESTONES,
   Vault,
 } from './types';
@@ -26,26 +27,14 @@ import { DepositSheet } from './components/DepositSheet';
 import { FeedTab } from './components/FeedTab';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { SettingsSheet } from './components/SettingsSheet';
-import { WelcomeOnboarding } from './components/WelcomeOnboarding';
 
 type ActiveTab = 'home' | 'feed';
 
-function getInviteCodeFromUrl(): string {
-  if (typeof window === 'undefined') return '';
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code') || '';
-  return code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-}
-
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [authReady, setAuthReady] = useState(false);
-
-  const [vaults, setVaults] = useState<Vault[]>([]);
-  const [vaultsLoaded, setVaultsLoaded] = useState(false);
-  const [selectedVaultId, setSelectedVaultId] = useState<string | null>(null);
-
+  const [vault, setVault] = useState<Vault>(DEFAULT_VAULT);
+  const [vaultLoaded, setVaultLoaded] = useState(false);
   const [contributions, setContributions] = useState<Contribution[]>([]);
+  const ensuringVaultRef = useRef(false);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [depositOpen, setDepositOpen] = useState(false);
@@ -54,63 +43,47 @@ export default function App() {
   const [justDepositedKey, setJustDepositedKey] = useState(0);
   const [milestoneBanner, setMilestoneBanner] = useState<string | null>(null);
 
-  const initialInviteCode = useMemo(() => getInviteCodeFromUrl(), []);
-
+  // Sync the single shared SALVAFRICA vault directly and auto-initialize if absent
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthReady(true);
-      if (!currentUser) {
-        setVaults([]);
-        setVaultsLoaded(false);
-        setSelectedVaultId(null);
-      }
-    });
-    return () => unsub();
-  }, []);
-
-  // Listen to user's vault in real time
-  useEffect(() => {
-    if (!authReady || !user) return;
-    const q = query(
-      collection(db, 'vaults'),
-      where('memberUids', 'array-contains', user.uid)
-    );
+    const vaultPath = `vaults/${MAIN_VAULT_ID}`;
     const unsub = onSnapshot(
-      q,
+      doc(db, 'vaults', MAIN_VAULT_ID),
       (snap) => {
-        const list = snap.docs.map((d) => d.data() as Vault);
-        setVaults(list);
-        setVaultsLoaded(true);
-        if (list.length > 0) {
-          setSelectedVaultId((prev) =>
-            prev && list.some((v) => v.id === prev) ? prev : list[0].id
-          );
-          if (initialInviteCode && window.location.search.includes('code=')) {
-            window.history.replaceState({}, document.title, window.location.pathname);
+        if (snap.exists()) {
+          const data = snap.data() as Vault;
+          setVault(data);
+          setVaultLoaded(true);
+          if (
+            data.partnerAName === 'Partner 1' &&
+            data.partnerBName === 'Partner 2' &&
+            !ensuringVaultRef.current
+          ) {
+            ensuringVaultRef.current = true;
+            ensureMainVaultExists().catch(() => {
+              ensuringVaultRef.current = false;
+            });
+          }
+        } else {
+          setVault(DEFAULT_VAULT);
+          setVaultLoaded(true);
+          if (!ensuringVaultRef.current) {
+            ensuringVaultRef.current = true;
+            ensureMainVaultExists().catch(() => {
+              ensuringVaultRef.current = false;
+            });
           }
         }
       },
       (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'vaults');
+        handleFirestoreError(error, OperationType.GET, vaultPath);
       }
     );
     return () => unsub();
-  }, [authReady, user, initialInviteCode]);
+  }, []);
 
-  const activeVault = useMemo(
-    () => vaults.find((v) => v.id === selectedVaultId) || vaults[0] || null,
-    [vaults, selectedVaultId]
-  );
-
-  // Listen to active vault contributions in real time
+  // Listen to contributions in real time
   useEffect(() => {
-    if (!authReady || !user || !activeVault) {
-      setContributions([]);
-      return;
-    }
-
-    const contribPath = `vaults/${activeVault.id}/contributions`;
+    const contribPath = `vaults/${MAIN_VAULT_ID}/contributions`;
     const contribQuery = query(
       collection(db, contribPath),
       orderBy('createdAt', 'desc')
@@ -128,7 +101,7 @@ export default function App() {
     return () => {
       unsubContrib();
     };
-  }, [authReady, user, activeVault]);
+  }, []);
 
   const stats = useMemo(() => {
     let totalSaved = 0;
@@ -160,8 +133,7 @@ export default function App() {
 
   const handleDepositSuccess = (addedAmount: number) => {
     setJustDepositedKey((k) => k + 1);
-    if (!activeVault) return;
-    const target = Math.max(1, activeVault.targetAmount);
+    const target = Math.max(1, vault.targetAmount);
     const prevPct = (stats.totalSaved / target) * 100;
     const nextPct = ((stats.totalSaved + addedAmount) / target) * 100;
 
@@ -182,29 +154,16 @@ export default function App() {
     }
   };
 
-  if (!authReady || (user && !vaultsLoaded)) {
+  if (!vaultLoaded) {
     return (
       <div className="h-[100dvh] w-full overflow-hidden bg-[#FAF6F0] text-[#122638] flex items-center justify-center p-6">
         <div className="text-center space-y-2">
           <p className="font-display text-2xl font-semibold text-[#122638]">
             SALVAFRICA
           </p>
-          <p className="text-xs text-[#5B6B79]">Sincronizzazione salvadanaio...</p>
+          <p className="text-xs text-[#5B6B79]">Caricamento salvadanaio...</p>
         </div>
       </div>
-    );
-  }
-
-  if (!user || !activeVault) {
-    return (
-      <>
-        <OfflineIndicator />
-        <WelcomeOnboarding
-          user={user}
-          initialInviteCode={initialInviteCode}
-          onVaultReady={(vaultId) => setSelectedVaultId(vaultId)}
-        />
-      </>
     );
   }
 
@@ -214,7 +173,7 @@ export default function App() {
 
       {/* Top Navigation Bar */}
       <header className="shrink-0 z-30 bg-[#FAF6F0]/95 backdrop-blur-md border-b border-[#E6DDD1] pt-safe">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 h-14 md:h-16 flex items-center justify-between gap-8">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 h-14 md:h-16 flex items-center justify-between gap-4">
           <button
             type="button"
             onClick={() => setActiveTab('home')}
@@ -265,9 +224,10 @@ export default function App() {
               type="button"
               onClick={() => setSettingsOpen(true)}
               aria-label="Impostazioni salvadanaio"
-              className="md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-[#5B6B79] hover:bg-[#F2ECE3]"
+              className="md:hidden min-h-[40px] px-3 rounded-xl bg-[#F2ECE3] text-xs font-semibold text-[#122638] hover:bg-[#E6DDD1] transition-colors inline-flex items-center gap-1.5"
             >
-              <Settings className="w-5 h-5" />
+              <Settings className="w-4 h-4 text-[#5B6B79]" />
+              <span>Impostazioni</span>
             </button>
 
             <button
@@ -297,7 +257,7 @@ export default function App() {
         <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 pb-8 md:pb-12">
           {activeTab === 'home' && (
             <DashboardTab
-              vault={activeVault}
+              vault={vault}
               contributions={contributions}
               totalSaved={stats.totalSaved}
               partnerATotal={stats.partnerATotal}
@@ -312,7 +272,7 @@ export default function App() {
 
           {activeTab === 'feed' && (
             <FeedTab
-              vault={activeVault}
+              vault={vault}
               contributions={contributions}
               onOpenDeposit={() => setDepositOpen(true)}
             />
@@ -367,15 +327,14 @@ export default function App() {
       <DepositSheet
         isOpen={depositOpen}
         onClose={() => setDepositOpen(false)}
-        vault={activeVault}
-        uid={user.uid}
+        vault={vault}
         onSuccessDeposit={handleDepositSuccess}
       />
 
       <SettingsSheet
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        vault={activeVault}
+        vault={vault}
       />
     </div>
   );

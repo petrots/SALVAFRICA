@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Copy, Download, LogOut, Share2, X } from 'lucide-react';
+import { Check, Copy, Download, Share2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { signOutUser } from '../firebase';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { updateVaultSettings } from '../services/vaultService';
 import { APP_LIMITS, Vault } from '../types';
@@ -38,11 +37,11 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
     setCopied(false);
   }, [isOpen, vault]);
 
-  const inviteUrl = `${window.location.origin}/?code=${vault.inviteCode}`;
+  const shareUrl = window.location.origin;
 
   const handleCopyInvite = async () => {
     try {
-      await navigator.clipboard.writeText(inviteUrl);
+      await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
@@ -55,8 +54,8 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
       try {
         await navigator.share({
           title: `SALVAFRICA · ${vault.title}`,
-          text: `Unisciti al nostro salvadanaio per l’Africa! Codice: ${vault.inviteCode}`,
-          url: inviteUrl,
+          text: 'Ecco il link diretto al nostro salvadanaio per l’Africa!',
+          url: shareUrl,
         });
       } catch {
         // User cancelled share
@@ -110,7 +109,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
 
             <div className="flex items-center justify-between px-6 pt-4 pb-3 border-b border-[#E8E2D9]">
               <h2 id="settings-sheet-title" className="font-display text-xl font-semibold text-[#132638]">
-                Impostazioni e invito partner
+                Impostazioni salvadanaio
               </h2>
               <button
                 type="button"
@@ -123,44 +122,36 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
             </div>
 
             <div className="overflow-y-auto px-6 py-5 space-y-6">
-              {/* Couple Invite Section */}
+              {/* Direct Couple Link Section */}
               <div className="rounded-2xl bg-[#F2ECE4] p-4 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-semibold text-[#132638]">
-                      Invito privato per il tuo partner
-                    </p>
-                    <p className="text-xs text-[#5C6B7A] mt-0.5">
-                      {vault.memberUids.length >= 2
-                        ? 'Entrambi siete già collegati a questo salvadanaio.'
-                        : 'Condividi questo link segreto: vale per un solo partner.'}
-                    </p>
-                  </div>
-                  <span className="font-mono text-xs font-semibold text-[#1A6B8A] shrink-0">
-                    {vault.inviteCode}
-                  </span>
+                <div>
+                  <p className="text-xs font-semibold text-[#132638]">
+                    Link privato di SALVAFRICA
+                  </p>
+                  <p className="text-xs text-[#5C6B79] mt-0.5">
+                    Aprite lo stesso link sui vostri due telefoni per vedere e aggiornare il
+                    salvadanaio in tempo reale, senza nessun login.
+                  </p>
                 </div>
 
-                {vault.memberUids.length < 2 && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleCopyInvite}
-                      className="flex-1 min-h-[44px] rounded-xl bg-white border border-[#E8E2D9] px-3 text-xs font-semibold text-[#132638] hover:bg-[#FAF8F5] inline-flex items-center justify-center gap-2"
-                    >
-                      {copied ? <Check className="w-4 h-4 text-[#1A6B8A]" /> : <Copy className="w-4 h-4" />}
-                      {copied ? 'Link copiato' : 'Copia link privato'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleShareNative}
-                      className="min-h-[44px] px-4 rounded-xl bg-[#1A6B8A] text-white text-xs font-semibold hover:bg-[#14556F] inline-flex items-center justify-center gap-2"
-                    >
-                      <Share2 className="w-4 h-4" />
-                      Invia
-                    </button>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyInvite}
+                    className="flex-1 min-h-[44px] rounded-xl bg-white border border-[#E8E2D9] px-3 text-xs font-semibold text-[#132638] hover:bg-[#FAF8F5] inline-flex items-center justify-center gap-2"
+                  >
+                    {copied ? <Check className="w-4 h-4 text-[#1A6B8A]" /> : <Copy className="w-4 h-4" />}
+                    {copied ? 'Link copiato' : 'Copia link app'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleShareNative}
+                    className="min-h-[44px] px-4 rounded-xl bg-[#1A6B8A] text-white text-xs font-semibold hover:bg-[#14556F] inline-flex items-center justify-center gap-2"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    Invia
+                  </button>
+                </div>
               </div>
 
               <form onSubmit={handleSave} className="space-y-4">
@@ -259,8 +250,8 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                 </button>
               </form>
 
-              <div className="pt-3 border-t border-[#E8E2D9] pb-safe space-y-2">
-                {isInstallable && !isInstalled && (
+              {isInstallable && !isInstalled && (
+                <div className="pt-3 border-t border-[#E8E2D9] pb-safe">
                   <button
                     type="button"
                     onClick={() => install()}
@@ -269,16 +260,8 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                     <Download className="w-4 h-4 text-[#1A6B8A]" />
                     Installa app sul dispositivo
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => signOutUser()}
-                  className="w-full min-h-[44px] rounded-xl text-xs font-semibold text-[#5C6B7A] hover:text-[#D1533C] hover:bg-[#E86A52]/10 transition-colors inline-flex items-center justify-center gap-2"
-                >
-                  <LogOut className="w-4 h-4" />
-                  Disconnetti questo dispositivo
-                </button>
-              </div>
+                </div>
+              )}
             </div>
           </motion.div>
         </div>

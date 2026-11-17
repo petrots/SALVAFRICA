@@ -13,7 +13,6 @@ interface DepositSheetProps {
   isOpen: boolean;
   onClose: () => void;
   vault: Vault;
-  uid: string;
   onSuccessDeposit: (addedAmount: number) => void;
 }
 
@@ -23,7 +22,6 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
   isOpen,
   onClose,
   vault,
-  uid,
   onSuccessDeposit,
 }) => {
   const [amountStr, setAmountStr] = useState('20');
@@ -39,8 +37,13 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
     setAmountStr('20');
     setSourceTag(EXTERNAL_SOURCE_TAGS[0]);
     setNote('');
-    setPartnerKey(vault.ownerUid === uid ? 'A' : 'B');
-  }, [isOpen, vault.ownerUid, uid]);
+    try {
+      const saved = window.localStorage.getItem('salvafrica_partner_key');
+      setPartnerKey(saved === 'B' ? 'B' : 'A');
+    } catch {
+      setPartnerKey('A');
+    }
+  }, [isOpen]);
 
   const handleQuickAdd = (preset: number) => {
     setAmountStr(String(preset));
@@ -56,9 +59,14 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
     }
 
     const partnerName = partnerKey === 'A' ? vault.partnerAName : vault.partnerBName;
+    try {
+      window.localStorage.setItem('salvafrica_partner_key', partnerKey);
+    } catch {
+      // Ignore storage restrictions
+    }
     setSubmitting(true);
     try {
-      await addContribution(vault.id, uid, {
+      await addContribution(vault.id, {
         amount: parsed,
         partnerKey,
         partnerName,

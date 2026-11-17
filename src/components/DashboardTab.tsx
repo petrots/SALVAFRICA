@@ -3,7 +3,6 @@ import {
   ArrowRight,
   Check,
   Compass,
-  Copy,
   Flag,
   Pencil,
   Plus,
@@ -42,7 +41,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const [editingNote, setEditingNote] = useState(false);
   const [noteDraft, setNoteDraft] = useState(vault.loveNote);
   const [savingNote, setSavingNote] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
 
   const target = Math.max(1, vault.targetAmount);
   const rawPct = (totalSaved / target) * 100;
@@ -69,40 +67,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     }
   };
 
-  const handleCopyInvite = async () => {
-    const url = `${window.location.origin}/?code=${vault.inviteCode}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2500);
-    } catch {
-      // Clipboard blocked fallback ignored
-    }
-  };
-
   const recentEntries = contributions.slice(0, 4);
 
   return (
     <div className="space-y-6">
-      {/* Waiting for second partner invite strip */}
-      {vault.memberUids.length < 2 && (
-        <div className="rounded-2xl bg-[#F2ECE3] border border-[#E6DDD1] p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="text-sm text-[#122638]">
-            <span className="font-semibold">Invita {vault.partnerBName}:</span>{' '}
-            <span className="text-[#5B6B79]">
-              condividi il link privato per sincronizzare entrambi i telefoni.
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={handleCopyInvite}
-            className="min-h-[44px] px-4 rounded-xl bg-white border border-[#E6DDD1] text-xs font-semibold text-[#122638] hover:bg-[#FAF6F0] transition-colors inline-flex items-center justify-center gap-2 shrink-0 whitespace-nowrap"
-          >
-            {copiedLink ? <Check className="w-4 h-4 text-[#1A6B8A]" /> : <Copy className="w-4 h-4" />}
-            {copiedLink ? 'Link copiato' : `Copia link (${vault.inviteCode})`}
-          </button>
-        </div>
-      )}
 
       {/* Flagship Fintech Hero Vault Card — Deep Ocean & Sunset Horizon */}
       <section className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#122638] via-[#17435E] to-[#1A6B8A] text-[#FAF6F0] p-6 sm:p-9 shadow-lg shadow-[#122638]/10">

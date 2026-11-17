@@ -2,7 +2,7 @@
   "entities": {
     "Vault": {
       "title": "Vault",
-      "description": "Shared couple vacation savings vault with fixed completion target and two-member access control.",
+      "description": "Single shared couple Africa trip savings vault with fixed completion target.",
       "type": "object",
       "properties": {
         "id": {
@@ -39,25 +39,6 @@
           "type": "string",
           "maxLength": 240
         },
-        "ownerUid": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "memberUids": {
-          "type": "array",
-          "description": "Up to 2 authenticated partner UIDs."
-        },
-        "inviteCode": {
-          "type": "string",
-          "minLength": 8,
-          "maxLength": 24,
-          "pattern": "^[A-Z0-9]+$"
-        },
-        "joinedInviteCode": {
-          "type": "string",
-          "maxLength": 24
-        },
         "createdAt": {
           "type": "string",
           "format": "date-time"
@@ -75,75 +56,13 @@
         "partnerAName",
         "partnerBName",
         "loveNote",
-        "ownerUid",
-        "memberUids",
-        "inviteCode",
-        "joinedInviteCode",
         "createdAt",
         "updatedAt"
       ]
     },
-    "VaultInvite": {
-      "title": "VaultInvite",
-      "description": "Private secret-code lookup record allowing the second partner to join a shared vault.",
-      "type": "object",
-      "properties": {
-        "inviteCode": {
-          "type": "string",
-          "minLength": 8,
-          "maxLength": 24,
-          "pattern": "^[A-Z0-9]+$"
-        },
-        "vaultId": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "ownerUid": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "vaultTitle": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 80
-        },
-        "destination": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 80
-        },
-        "partnerAName": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 40
-        },
-        "partnerBName": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 40
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "inviteCode",
-        "vaultId",
-        "ownerUid",
-        "vaultTitle",
-        "destination",
-        "partnerAName",
-        "partnerBName",
-        "createdAt"
-      ]
-    },
     "Contribution": {
       "title": "Contribution",
-      "description": "Deposit funded strictly by external side activities or micro-savings.",
+      "description": "Deposit funded strictly by external side activities.",
       "type": "object",
       "properties": {
         "id": {
@@ -185,11 +104,6 @@
         "reactionFire": {
           "type": "boolean"
         },
-        "authorUid": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
         "createdAt": {
           "type": "string",
           "format": "date-time"
@@ -210,7 +124,6 @@
         "reactionToast",
         "reactionPlane",
         "reactionFire",
-        "authorUid",
         "createdAt",
         "updatedAt"
       ]
@@ -221,19 +134,13 @@
       "schema": {
         "$ref": "#/entities/Vault"
       },
-      "description": "Shared couple vacation savings vault document."
-    },
-    "/vaultInvites/{inviteCode}": {
-      "schema": {
-        "$ref": "#/entities/VaultInvite"
-      },
-      "description": "Private invite code lookup document for joining a vault."
+      "description": "Single shared couple Africa trip savings vault document."
     },
     "/vaults/{vaultId}/contributions/{contributionId}": {
       "schema": {
         "$ref": "#/entities/Contribution"
       },
-      "description": "External-activity deposit records belonging to a vault."
+      "description": "External-activity deposit records belonging to the vault."
     }
   }
 }

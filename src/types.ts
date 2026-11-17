@@ -2,6 +2,8 @@ import { Timestamp } from 'firebase/firestore';
 
 export type PartnerKey = 'A' | 'B';
 
+export const MAIN_VAULT_ID = 'salvafrica-viaggio';
+
 export interface Vault {
   id: string;
   title: string;
@@ -10,23 +12,8 @@ export interface Vault {
   partnerAName: string;
   partnerBName: string;
   loveNote: string;
-  ownerUid: string;
-  memberUids: string[];
-  inviteCode: string;
-  joinedInviteCode: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
-}
-
-export interface VaultInvite {
-  inviteCode: string;
-  vaultId: string;
-  ownerUid: string;
-  vaultTitle: string;
-  destination: string;
-  partnerAName: string;
-  partnerBName: string;
-  createdAt?: Timestamp;
 }
 
 export interface Contribution {
@@ -40,7 +27,6 @@ export interface Contribution {
   reactionToast: boolean;
   reactionPlane: boolean;
   reactionFire: boolean;
-  authorUid: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }

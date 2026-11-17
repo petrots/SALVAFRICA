@@ -1,19 +1,29 @@
 import {
   deleteDoc,
   doc,
-  getDoc,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
-  writeBatch,
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import {
   APP_LIMITS,
   Contribution,
+  MAIN_VAULT_ID,
   PartnerKey,
-  VaultInvite,
+  Vault,
 } from '../types';
+
+export const DEFAULT_VAULT: Vault = {
+  id: MAIN_VAULT_ID,
+  title: 'Viaggio in Africa',
+  destination: 'Africa',
+  targetAmount: 2500,
+  partnerAName: 'Tiziano',
+  partnerBName: 'Daria',
+  loveNote: 'Zero risparmi o stipendio: ogni piccola entrata extra ci porta in Africa.',
+};
 
 function makeId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -22,129 +32,42 @@ function makeId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function makeInviteCode(): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let result = '';
-  for (let i = 0; i < 12; i += 1) {
-    result += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-  }
-  return result;
-}
-
 function clampString(value: string, maxLen: number): string {
   return value.trim().slice(0, maxLen);
 }
 
-export async function createVaultAndInvite(
-  uid: string,
-  params: {
-    title: string;
-    destination: string;
-    targetAmount: number;
-    partnerAName: string;
-    partnerBName: string;
-    loveNote?: string;
-  }
-): Promise<string> {
-  const vaultId = `v-${makeId()}`.slice(0, 48);
-  const inviteCode = makeInviteCode();
-
-  const title = clampString(params.title, APP_LIMITS.titleMax) || 'Viaggio in Africa';
-  const destination = clampString(params.destination, APP_LIMITS.destinationMax) || 'Africa';
-  const partnerAName = clampString(params.partnerAName, APP_LIMITS.partnerNameMax) || 'Partner 1';
-  const partnerBName = clampString(params.partnerBName, APP_LIMITS.partnerNameMax) || 'Partner 2';
-  const loveNote = clampString(
-    params.loveNote ?? 'Zero risparmi o stipendio: ogni piccola entrata extra ci porta in Africa.',
-    APP_LIMITS.loveNoteMax
-  );
-  const targetAmount = Math.min(1000000, Math.max(1, Number(params.targetAmount) || 1500));
-
-  const batch = writeBatch(db);
-  const vaultRef = doc(db, 'vaults', vaultId);
-  const inviteRef = doc(db, 'vaultInvites', inviteCode);
-
-  batch.set(vaultRef, {
-    id: vaultId,
-    title,
-    destination,
-    targetAmount,
-    partnerAName,
-    partnerBName,
-    loveNote,
-    ownerUid: uid,
-    memberUids: [uid],
-    inviteCode,
-    joinedInviteCode: '',
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-
-  batch.set(inviteRef, {
-    inviteCode,
-    vaultId,
-    ownerUid: uid,
-    vaultTitle: title,
-    destination,
-    partnerAName,
-    partnerBName,
-    createdAt: serverTimestamp(),
-  });
+export async function ensureMainVaultExists(): Promise<void> {
+  const vaultPath = `vaults/${MAIN_VAULT_ID}`;
+  const vaultRef = doc(db, 'vaults', MAIN_VAULT_ID);
 
   try {
-    await batch.commit();
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `vaults/${vaultId}`);
-  }
-
-  return vaultId;
-}
-
-export async function lookupInvite(rawCode: string): Promise<VaultInvite | null> {
-  const cleanCode = rawCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (cleanCode.length < 8 || cleanCode.length > 24) {
-    return null;
-  }
-  const path = `vaultInvites/${cleanCode}`;
-  try {
-    const snap = await getDoc(doc(db, 'vaultInvites', cleanCode));
-    if (!snap.exists()) return null;
-    return snap.data() as VaultInvite;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.GET, path);
-  }
-}
-
-export async function joinVaultWithCode(
-  uid: string,
-  rawCode: string
-): Promise<{ ok: true; vaultId: string } | { ok: false; reason: string }> {
-  const cleanCode = rawCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const invite = await lookupInvite(cleanCode);
-  if (!invite) {
-    return { ok: false, reason: 'Codice invito non trovato o non valido.' };
-  }
-
-  if (invite.ownerUid === uid) {
-    return { ok: true, vaultId: invite.vaultId };
-  }
-
-  const vaultPath = `vaults/${invite.vaultId}`;
-  try {
-    await updateDoc(doc(db, 'vaults', invite.vaultId), {
-      memberUids: [invite.ownerUid, uid],
-      joinedInviteCode: cleanCode,
-      updatedAt: serverTimestamp(),
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(vaultRef);
+      if (!snap.exists()) {
+        tx.set(vaultRef, {
+          id: DEFAULT_VAULT.id,
+          title: DEFAULT_VAULT.title,
+          destination: DEFAULT_VAULT.destination,
+          targetAmount: DEFAULT_VAULT.targetAmount,
+          partnerAName: DEFAULT_VAULT.partnerAName,
+          partnerBName: DEFAULT_VAULT.partnerBName,
+          loveNote: DEFAULT_VAULT.loveNote,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        const data = snap.data() as Partial<Vault>;
+        if (data.partnerAName === 'Partner 1' && data.partnerBName === 'Partner 2') {
+          tx.update(vaultRef, {
+            partnerAName: 'Tiziano',
+            partnerBName: 'Daria',
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
     });
-    return { ok: true, vaultId: invite.vaultId };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    if (msg.toLowerCase().includes('permission')) {
-      return {
-        ok: false,
-        reason: 'Questo salvadanaio ha già due partecipanti oppure non è più disponibile.',
-      };
-    }
-    handleFirestoreError(error, OperationType.UPDATE, vaultPath);
+    handleFirestoreError(error, OperationType.WRITE, vaultPath);
   }
 }
 
@@ -161,12 +84,13 @@ export async function updateVaultSettings(
 ): Promise<void> {
   const path = `vaults/${vaultId}`;
   try {
+    await ensureMainVaultExists();
     await updateDoc(doc(db, 'vaults', vaultId), {
       title: clampString(updates.title, APP_LIMITS.titleMax) || 'Viaggio in Africa',
       destination: clampString(updates.destination, APP_LIMITS.destinationMax) || 'Africa',
       targetAmount: Math.min(1000000, Math.max(1, Number(updates.targetAmount) || 1000)),
-      partnerAName: clampString(updates.partnerAName, APP_LIMITS.partnerNameMax) || 'Partner 1',
-      partnerBName: clampString(updates.partnerBName, APP_LIMITS.partnerNameMax) || 'Partner 2',
+      partnerAName: clampString(updates.partnerAName, APP_LIMITS.partnerNameMax) || 'Tiziano',
+      partnerBName: clampString(updates.partnerBName, APP_LIMITS.partnerNameMax) || 'Daria',
       loveNote: clampString(updates.loveNote, APP_LIMITS.loveNoteMax),
       updatedAt: serverTimestamp(),
     });
@@ -178,6 +102,7 @@ export async function updateVaultSettings(
 export async function updateLoveNote(vaultId: string, loveNote: string): Promise<void> {
   const path = `vaults/${vaultId}`;
   try {
+    await ensureMainVaultExists();
     await updateDoc(doc(db, 'vaults', vaultId), {
       loveNote: clampString(loveNote, APP_LIMITS.loveNoteMax),
       updatedAt: serverTimestamp(),
@@ -189,7 +114,6 @@ export async function updateLoveNote(vaultId: string, loveNote: string): Promise
 
 export async function addContribution(
   vaultId: string,
-  uid: string,
   data: {
     amount: number;
     partnerKey: PartnerKey;
@@ -208,6 +132,7 @@ export async function addContribution(
   const contribRef = doc(db, 'vaults', vaultId, 'contributions', contributionId);
 
   try {
+    await ensureMainVaultExists();
     await setDoc(contribRef, {
       id: contributionId,
       amount,
@@ -219,7 +144,6 @@ export async function addContribution(
       reactionToast: false,
       reactionPlane: false,
       reactionFire: false,
-      authorUid: uid,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
