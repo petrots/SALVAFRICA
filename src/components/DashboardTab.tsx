@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { ArrowRight, Pencil } from 'lucide-react';
 import { updateLoveNote } from '../services/vaultService';
-import { APP_LIMITS, Contribution, Vault } from '../types';
+import { APP_LIMITS, Category, Contribution, Vault } from '../types';
+import { resolveContributionCategoryLabel } from '../utils/categories';
 import { formatDateTime, formatEuro } from '../utils/format';
 import { getSourceIcon } from '../utils/sourceIcons';
 import { JourneyPath } from './JourneyPath';
@@ -9,6 +10,7 @@ import { JourneyPath } from './JourneyPath';
 interface DashboardTabProps {
   vault: Vault;
   contributions: Contribution[];
+  categoriesById: Map<string, Category>;
   totalSaved: number;
   partnerATotal: number;
   partnerBTotal: number;
@@ -23,6 +25,7 @@ interface DashboardTabProps {
 export const DashboardTab: React.FC<DashboardTabProps> = ({
   vault,
   contributions,
+  categoriesById,
   totalSaved,
   partnerATotal,
   partnerBTotal,
@@ -215,47 +218,53 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </div>
           ) : (
             <div className="divide-y divide-[#E6DDD1] dark:divide-[#264561] border-t border-[#E6DDD1] dark:border-[#264561]">
-              {recentEntries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="py-3.5 flex items-center justify-between gap-4"
-                >
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <span
-                      className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                        entry.partnerKey === 'A'
-                          ? 'bg-[#E86A52]/12 dark:bg-[#E86A52]/20 text-[#D1533C] dark:text-[#E86A52]'
-                          : 'bg-[#1A6B8A]/12 dark:bg-[#2D8FB3]/20 text-[#1A6B8A] dark:text-[#2D8FB3]'
-                      }`}
-                    >
-                      {getSourceIcon(entry.sourceTag)}
-                    </span>
+              {recentEntries.map((entry) => {
+                const categoryLabel = resolveContributionCategoryLabel(
+                  entry,
+                  categoriesById
+                );
+                return (
+                  <div
+                    key={entry.id}
+                    className="py-3.5 flex items-center justify-between gap-4"
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <span
+                        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+                          entry.partnerKey === 'A'
+                            ? 'bg-[#E86A52]/12 dark:bg-[#E86A52]/20 text-[#D1533C] dark:text-[#E86A52]'
+                            : 'bg-[#1A6B8A]/12 dark:bg-[#2D8FB3]/20 text-[#1A6B8A] dark:text-[#2D8FB3]'
+                        }`}
+                      >
+                        {getSourceIcon(categoryLabel)}
+                      </span>
 
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0] truncate">
-                        {entry.note || entry.sourceTag}
-                      </p>
-                      <div className="flex items-center gap-1.5 text-xs text-[#5B6B79] dark:text-[#9DB0C0] truncate">
-                        <span className="font-medium text-[#122638] dark:text-[#FAF6F0]">
-                          {entry.partnerName}
-                        </span>
-                        <span aria-hidden="true">·</span>
-                        <span className="truncate">{entry.sourceTag}</span>
-                        <span aria-hidden="true" className="hidden sm:inline">
-                          ·
-                        </span>
-                        <span className="hidden sm:inline shrink-0">
-                          {formatDateTime(entry.createdAt)}
-                        </span>
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0] truncate">
+                          {entry.note || categoryLabel}
+                        </p>
+                        <div className="flex items-center gap-1.5 text-xs text-[#5B6B79] dark:text-[#9DB0C0] truncate">
+                          <span className="font-medium text-[#122638] dark:text-[#FAF6F0]">
+                            {entry.partnerName}
+                          </span>
+                          <span aria-hidden="true">·</span>
+                          <span className="truncate">{categoryLabel}</span>
+                          <span aria-hidden="true" className="hidden sm:inline">
+                            ·
+                          </span>
+                          <span className="hidden sm:inline shrink-0">
+                            {formatDateTime(entry.createdAt)}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <span className="font-display text-lg font-semibold tabular-nums text-[#122638] dark:text-[#FAF6F0] shrink-0">
-                    +{formatEuro(entry.amount)}
-                  </span>
-                </div>
-              ))}
+                    <span className="font-display text-lg font-semibold tabular-nums text-[#122638] dark:text-[#FAF6F0] shrink-0">
+                      +{formatEuro(entry.amount)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>

@@ -15,8 +15,13 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from './firebase';
-import { DEFAULT_VAULT, ensureMainVaultExists } from './services/vaultService';
 import {
+  DEFAULT_VAULT,
+  ensureInitialCategoryExists,
+  ensureMainVaultExists,
+} from './services/vaultService';
+import {
+  Category,
   Contribution,
   MAIN_VAULT_ID,
   MILESTONES,
@@ -27,6 +32,7 @@ import { DepositSheet } from './components/DepositSheet';
 import { FeedTab } from './components/FeedTab';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { SettingsSheet } from './components/SettingsSheet';
+import { sortCategoriesByLastUsed } from './utils/categories';
 import { triggerHaptic } from './utils/haptics';
 
 type ActiveTab = 'home' | 'feed';
@@ -36,7 +42,10 @@ export default function App() {
   const [vaultLoaded, setVaultLoaded] = useState(false);
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [contributionsLoaded, setContributionsLoaded] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const ensuringVaultRef = useRef(false);
+  const seedingCategoryRef = useRef(false);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [depositOpen, setDepositOpen] = useState(false);
@@ -134,6 +143,54 @@ export default function App() {
       unsubContrib();
     };
   }, []);
+
+  // Listen to customizable categories in real time and seed single initial "Mance" if empty
+  useEffect(() => {
+    const categoriesPath = `vaults/${MAIN_VAULT_ID}/categories`;
+    const unsubCategories = onSnapshot(
+      collection(db, categoriesPath),
+      (snap) => {
+        setCategories(snap.docs.map((d) => d.data() as Category));
+        setCategoriesLoaded(true);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, categoriesPath);
+      }
+    );
+
+    return () => {
+      unsubCategories();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      vaultLoaded &&
+      categoriesLoaded &&
+      categories.length === 0 &&
+      !seedingCategoryRef.current
+    ) {
+      seedingCategoryRef.current = true;
+      ensureInitialCategoryExists(MAIN_VAULT_ID).catch(() => {
+        seedingCategoryRef.current = false;
+      });
+    }
+  }, [vaultLoaded, categoriesLoaded, categories.length]);
+
+  const sortedCategories = useMemo(
+    () => sortCategoriesByLastUsed(categories),
+    [categories]
+  );
+
+  const activeCategories = useMemo(
+    () => sortedCategories.filter((c) => !c.archived),
+    [sortedCategories]
+  );
+
+  const categoriesById = useMemo(
+    () => new Map(categories.map((c) => [c.id, c])),
+    [categories]
+  );
 
   const stats = useMemo(() => {
     let totalSaved = 0;
@@ -393,6 +450,7 @@ export default function App() {
             <DashboardTab
               vault={vault}
               contributions={contributions}
+              categoriesById={categoriesById}
               totalSaved={stats.totalSaved}
               partnerATotal={stats.partnerATotal}
               partnerBTotal={stats.partnerBTotal}
@@ -409,6 +467,7 @@ export default function App() {
             <FeedTab
               vault={vault}
               contributions={contributions}
+              categoriesById={categoriesById}
               onOpenDeposit={() => setDepositOpen(true)}
             />
           )}
@@ -484,6 +543,9 @@ export default function App() {
         isOpen={depositOpen}
         onClose={() => setDepositOpen(false)}
         vault={vault}
+        categories={sortedCategories}
+        activeCategories={activeCategories}
+        categoriesLoaded={categoriesLoaded}
         onDepositStart={handleDepositStart}
         onSuccessDeposit={handleDepositSuccess}
       />
@@ -492,6 +554,8 @@ export default function App() {
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         vault={vault}
+        categories={sortedCategories}
+        contributions={contributions}
         isDark={isDark}
         onToggleTheme={() => setIsDark((prev) => !prev)}
       />

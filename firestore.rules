@@ -49,6 +49,22 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidCategory(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'archived', 'lastUsedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'name', 'archived', 'lastUsedAt', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id.size() <= 64
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 50
+        && data.archived is bool
+        && (data.lastUsedAt == null || data.lastUsedAt is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     function isValidContribution(data) {
       return data.keys().hasAll([
           'id', 'amount', 'partnerKey', 'partnerName', 'sourceTag', 'note',
@@ -56,7 +72,7 @@ service cloud.firestore {
           'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'id', 'amount', 'partnerKey', 'partnerName', 'sourceTag', 'note',
+          'id', 'amount', 'partnerKey', 'partnerName', 'sourceTag', 'categoryId', 'note',
           'reactionHeart', 'reactionToast', 'reactionPlane', 'reactionFire',
           'createdAt', 'updatedAt'
         ])
@@ -65,6 +81,7 @@ service cloud.firestore {
         && data.partnerKey is string && (data.partnerKey == 'A' || data.partnerKey == 'B')
         && data.partnerName is string && data.partnerName.size() >= 1 && data.partnerName.size() <= 40
         && data.sourceTag is string && data.sourceTag.size() >= 1 && data.sourceTag.size() <= 50
+        && (!('categoryId' in data) || (isValidId(data.categoryId) && data.categoryId.size() <= 64))
         && data.note is string && data.note.size() <= 200
         && data.reactionHeart is bool
         && data.reactionToast is bool
@@ -92,6 +109,37 @@ service cloud.firestore {
         && incoming().updatedAt == request.time;
       allow delete: if false;
 
+      match /categories/{categoryId} {
+        allow get: if isMainVault(vaultId) && isValidId(categoryId) && parentVaultExists(vaultId);
+        allow list: if isMainVault(vaultId);
+        allow create: if isMainVault(vaultId)
+          && isValidId(categoryId)
+          && isValidCategory(incoming())
+          && incoming().id == categoryId
+          && (incoming().lastUsedAt == null || incoming().lastUsedAt == request.time)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && parentVaultExists(vaultId);
+        allow update: if isMainVault(vaultId)
+          && isValidId(categoryId)
+          && isValidCategory(incoming())
+          && parentVaultExists(vaultId)
+          && incoming().id == existing().id
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt'])
+            ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['archived', 'updatedAt'])
+            ||
+            (
+              incoming().diff(existing()).affectedKeys().hasOnly(['lastUsedAt', 'updatedAt'])
+              && incoming().lastUsedAt == request.time
+            )
+          );
+        allow delete: if false;
+      }
+
       match /contributions/{contributionId} {
         allow get: if isMainVault(vaultId) && isValidId(contributionId) && parentVaultExists(vaultId);
         allow list: if isMainVault(vaultId);
@@ -115,7 +163,11 @@ service cloud.firestore {
             ])
             ||
             incoming().diff(existing()).affectedKeys().hasOnly([
-              'amount', 'partnerKey', 'partnerName', 'sourceTag', 'note', 'updatedAt'
+              'sourceTag', 'updatedAt'
+            ])
+            ||
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'amount', 'partnerKey', 'partnerName', 'sourceTag', 'categoryId', 'note', 'updatedAt'
             ])
           );
         allow delete: if isMainVault(vaultId) && isValidId(contributionId) && parentVaultExists(vaultId);

@@ -15,7 +15,7 @@ export function getSourceIcon(sourceTag: string): React.ReactNode {
   if (lower.includes('vinted') || lower.includes('subito')) {
     return <ShoppingBag className="w-4 h-4" />;
   }
-  if (lower.includes('lavoretto')) {
+  if (lower.includes('lavoretto') || lower.includes('ripetizion') || lower.includes('freelance')) {
     return <Briefcase className="w-4 h-4" />;
   }
   if (lower.includes('monetine') || lower.includes('resti')) {
@@ -27,7 +27,7 @@ export function getSourceIcon(sourceTag: string): React.ReactNode {
   if (lower.includes('scommessa')) {
     return <Trophy className="w-4 h-4" />;
   }
-  if (lower.includes('mancia') || lower.includes('regalo') || lower.includes('premio')) {
+  if (lower.includes('manc') || lower.includes('regalo') || lower.includes('premio')) {
     return <Gift className="w-4 h-4" />;
   }
   if (lower.includes('mercatino') || lower.includes('usati')) {

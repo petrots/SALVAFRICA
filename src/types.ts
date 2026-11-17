@@ -3,6 +3,8 @@ import { Timestamp } from 'firebase/firestore';
 export type PartnerKey = 'A' | 'B';
 
 export const MAIN_VAULT_ID = 'salvafrica-viaggio';
+export const INITIAL_CATEGORY_ID = 'cat-mance';
+export const INITIAL_CATEGORY_NAME = 'Mance';
 
 export interface Vault {
   id: string;
@@ -16,12 +18,22 @@ export interface Vault {
   updatedAt?: Timestamp;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  archived: boolean;
+  lastUsedAt?: Timestamp | null;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
 export interface Contribution {
   id: string;
   amount: number;
   partnerKey: PartnerKey;
   partnerName: string;
   sourceTag: string;
+  categoryId?: string;
   note: string;
   reactionHeart: boolean;
   reactionToast: boolean;
@@ -30,17 +42,6 @@ export interface Contribution {
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
-
-export const EXTERNAL_SOURCE_TAGS = [
-  'Vendita Vinted / Subito',
-  'Lavoretto / extra',
-  'Monetine e resti trovati',
-  'Cashback / rimborso / bonus',
-  'Scommessa di coppia vinta',
-  'Mancia / premio / regalo',
-  'Mercatino / oggetti usati',
-  'Altra entrata esterna',
-] as const;
 
 export interface Milestone {
   percent: number;
@@ -67,5 +68,6 @@ export const APP_LIMITS = {
   partnerNameMax: 40,
   loveNoteMax: 240,
   sourceTagMax: 50,
+  categoryNameMax: 50,
   contributionNoteMax: 200,
 } as const;

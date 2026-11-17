@@ -1,14 +1,34 @@
-import React, { useEffect, useState } from 'react';
-import { Check, Copy, Download, Moon, Share2, Sun, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Archive,
+  Check,
+  Copy,
+  Download,
+  Moon,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Share2,
+  Sun,
+  X,
+} from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
-import { updateVaultSettings } from '../services/vaultService';
-import { APP_LIMITS, Vault } from '../types';
+import {
+  createCategory,
+  renameCategory,
+  setCategoryArchived,
+  updateVaultSettings,
+} from '../services/vaultService';
+import { APP_LIMITS, Category, Contribution, Vault } from '../types';
+import { getSourceIcon } from '../utils/sourceIcons';
 
 interface SettingsSheetProps {
   isOpen: boolean;
   onClose: () => void;
   vault: Vault;
+  categories: Category[];
+  contributions: Contribution[];
   isDark: boolean;
   onToggleTheme: () => void;
 }
@@ -17,6 +37,8 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
   isOpen,
   onClose,
   vault,
+  categories,
+  contributions,
   isDark,
   onToggleTheme,
 }) => {
@@ -27,6 +49,16 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
   const [loveNote, setLoveNote] = useState(vault.loveNote);
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Category management states
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editingCatName, setEditingCatName] = useState('');
+  const [catBusyId, setCatBusyId] = useState<string | null>(null);
+  const [categoryError, setCategoryError] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+
   const { isInstallable, isInstalled, install } = usePWAInstall();
 
   useEffect(() => {
@@ -37,7 +69,21 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
     setPartnerBName(vault.partnerBName);
     setLoveNote(vault.loveNote);
     setCopied(false);
+    setNewCategoryName('');
+    setEditingCatId(null);
+    setEditingCatName('');
+    setCategoryError('');
   }, [isOpen, vault]);
+
+  const activeCategories = useMemo(
+    () => categories.filter((c) => !c.archived),
+    [categories]
+  );
+
+  const archivedCategories = useMemo(
+    () => categories.filter((c) => c.archived),
+    [categories]
+  );
 
   const shareUrl = window.location.origin;
 
@@ -85,6 +131,67 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
     }
   };
 
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (creatingCategory) return;
+    setCategoryError('');
+    setCreatingCategory(true);
+    try {
+      await createCategory(vault.id, newCategoryName, categories);
+      setNewCategoryName('');
+    } catch (err) {
+      setCategoryError(
+        err instanceof Error
+          ? err.message
+          : 'Impossibile creare la categoria.'
+      );
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
+  const handleSaveRename = async (category: Category) => {
+    if (catBusyId) return;
+    setCategoryError('');
+    setCatBusyId(category.id);
+    try {
+      await renameCategory(
+        vault.id,
+        category,
+        editingCatName,
+        categories,
+        contributions
+      );
+      setEditingCatId(null);
+      setEditingCatName('');
+    } catch (err) {
+      setCategoryError(
+        err instanceof Error
+          ? err.message
+          : 'Impossibile rinominare la categoria.'
+      );
+    } finally {
+      setCatBusyId(null);
+    }
+  };
+
+  const handleToggleArchive = async (category: Category, nextArchived: boolean) => {
+    if (catBusyId) return;
+    setCategoryError('');
+    setCatBusyId(category.id);
+    try {
+      await setCategoryArchived(vault.id, category.id, nextArchived);
+      if (editingCatId === category.id) {
+        setEditingCatId(null);
+        setEditingCatName('');
+      }
+    } catch {
+      setCategoryError('Operazione non riuscita. Riprova.');
+    } finally {
+      setCatBusyId(null);
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -94,25 +201,25 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-[#122638]/50 dark:bg-[#07111A]/75 backdrop-blur-xs"
+            className="fixed inset-0 bg-[#122638]/55 dark:bg-[#07111A]/80 backdrop-blur-xs"
           />
 
           <motion.div
-            initial={{ y: '100%', opacity: 0.8 }}
+            initial={{ y: '100%', opacity: 0.85 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: '100%', opacity: 0.8 }}
+            exit={{ y: '100%', opacity: 0.85 }}
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-            className="relative z-10 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl bg-white dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] shadow-xl max-h-[90vh] flex flex-col"
+            className="relative z-10 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl bg-[#FAF6F0] dark:bg-[#0E1F2E] border-t sm:border border-[#E6DDD1] dark:border-[#264561] max-h-[90dvh] flex flex-col overflow-hidden"
             role="dialog"
             aria-modal="true"
             aria-labelledby="settings-sheet-title"
           >
-            <div className="sm:hidden w-10 h-1.5 bg-[#E6DDD1] dark:bg-[#264561] rounded-full mx-auto mt-3" />
+            <div className="sm:hidden w-10 h-1 bg-[#E6DDD1] dark:bg-[#264561] rounded-full mx-auto mt-2.5 shrink-0" />
 
-            <div className="flex items-center justify-between px-6 pt-4 pb-3 border-b border-[#E6DDD1] dark:border-[#264561]">
+            <div className="shrink-0 flex items-center justify-between px-5 sm:px-6 pt-3 pb-3 border-b border-[#E6DDD1] dark:border-[#264561]">
               <h2
                 id="settings-sheet-title"
-                className="font-display text-xl font-semibold text-[#122638] dark:text-[#FAF6F0]"
+                className="font-display text-xl sm:text-2xl font-semibold text-[#122638] dark:text-[#FAF6F0] tracking-tight"
               >
                 Impostazioni salvadanaio
               </h2>
@@ -120,17 +227,17 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                 type="button"
                 onClick={onClose}
                 aria-label="Chiudi"
-                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-[#5B6B79] dark:text-[#9DB0C0] hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952]"
+                className="min-h-[44px] min-w-[44px] -mr-2 flex items-center justify-center rounded-full text-[#5B6B79] dark:text-[#9DB0C0] hover:bg-[#F2ECE3] dark:hover:bg-[#162D42] transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="overflow-y-auto px-6 py-5 space-y-6">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 sm:px-6 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-6">
               {/* Theme Mode Toggle */}
-              <div className="rounded-2xl bg-[#F2ECE3] dark:bg-[#1E3952] p-4 flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-4 pb-5 border-b border-[#E6DDD1] dark:border-[#264561]">
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="w-10 h-10 rounded-xl bg-white dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] flex items-center justify-center shrink-0">
+                  <span className="w-9 h-9 rounded-full bg-[#F2ECE3] dark:bg-[#162D42] flex items-center justify-center shrink-0">
                     {isDark ? (
                       <Moon className="w-4 h-4 text-[#F7C76E]" />
                     ) : (
@@ -138,10 +245,10 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                     )}
                   </span>
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-[#122638] dark:text-[#FAF6F0]">
+                    <p className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0]">
                       Modalità notte
                     </p>
-                    <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] mt-0.5 truncate">
+                    <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] truncate">
                       {isDark ? 'Tema scuro oceano attivo' : 'Tema chiaro sabbia attivo'}
                     </p>
                   </div>
@@ -168,22 +275,22 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
               </div>
 
               {/* Direct Couple Link Section */}
-              <div className="rounded-2xl bg-[#F2ECE3] dark:bg-[#1E3952] p-4 space-y-3">
+              <div className="pb-5 border-b border-[#E6DDD1] dark:border-[#264561] space-y-3">
                 <div>
-                  <p className="text-xs font-semibold text-[#122638] dark:text-[#FAF6F0]">
+                  <p className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0]">
                     Link privato di SALVAFRICA
                   </p>
-                  <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] mt-0.5">
+                  <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] mt-0.5 leading-relaxed">
                     Aprite lo stesso link sui vostri due telefoni per vedere e aggiornare il
                     salvadanaio in tempo reale, senza nessun login.
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <button
                     type="button"
                     onClick={handleCopyInvite}
-                    className="flex-1 min-h-[44px] rounded-xl bg-white dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] px-3 text-xs font-semibold text-[#122638] dark:text-[#FAF6F0] hover:bg-[#FAF6F0] dark:hover:bg-[#112436] inline-flex items-center justify-center gap-2"
+                    className="flex-1 min-h-[44px] rounded-full bg-[#F2ECE3] dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] px-4 text-xs font-semibold text-[#122638] dark:text-[#FAF6F0] hover:bg-[#E6DDD1]/70 dark:hover:bg-[#1E3952] inline-flex items-center justify-center gap-2 transition-colors"
                   >
                     {copied ? (
                       <Check className="w-4 h-4 text-[#1A6B8A] dark:text-[#2D8FB3]" />
@@ -195,7 +302,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                   <button
                     type="button"
                     onClick={handleShareNative}
-                    className="min-h-[44px] px-4 rounded-xl bg-[#1A6B8A] text-white text-xs font-semibold hover:bg-[#14556F] inline-flex items-center justify-center gap-2"
+                    className="min-h-[44px] px-5 rounded-full bg-[#1A6B8A] text-white text-xs font-semibold hover:bg-[#14556F] inline-flex items-center justify-center gap-2 transition-colors"
                   >
                     <Share2 className="w-4 h-4" />
                     Invia
@@ -203,6 +310,198 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                 </div>
               </div>
 
+              {/* Custom Categories Management Section */}
+              <section
+                aria-label="Gestisci categorie"
+                className="pb-5 border-b border-[#E6DDD1] dark:border-[#264561] space-y-3.5"
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <div>
+                    <h3 className="font-display text-lg font-semibold text-[#122638] dark:text-[#FAF6F0]">
+                      Gestisci categorie
+                    </h3>
+                    <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0]">
+                      Crea, rinomina o archivia le categorie dei versamenti
+                    </p>
+                  </div>
+                  <span className="text-xs font-semibold tabular-nums text-[#1A6B8A] dark:text-[#2D8FB3] shrink-0">
+                    {activeCategories.length} attive
+                  </span>
+                </div>
+
+                {/* Inline New Category Creator */}
+                <form onSubmit={handleAddCategory} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    maxLength={APP_LIMITS.categoryNameMax}
+                    value={newCategoryName}
+                    onChange={(e) => {
+                      setNewCategoryName(e.target.value);
+                      if (categoryError) setCategoryError('');
+                    }}
+                    placeholder="Nuova categoria..."
+                    aria-label="Nuova categoria"
+                    className="flex-1 min-w-0 min-h-[44px] bg-transparent border-b border-[#E6DDD1] dark:border-[#264561] focus:border-[#E86A52] py-1.5 text-base text-[#122638] dark:text-[#FAF6F0] placeholder:text-[#5B6B79]/60 dark:placeholder:text-[#9DB0C0]/50 focus:outline-none transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    disabled={creatingCategory}
+                    className="min-h-[44px] px-4 rounded-full bg-[#E86A52] text-xs font-semibold text-white hover:bg-[#D1533C] disabled:opacity-50 inline-flex items-center gap-1.5 shrink-0 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[2.25]" />
+                    <span>{creatingCategory ? 'Salvo...' : 'Aggiungi'}</span>
+                  </button>
+                </form>
+
+                {categoryError && (
+                  <p role="alert" className="text-xs font-medium text-[#D1533C] dark:text-[#E86A52]">
+                    {categoryError}
+                  </p>
+                )}
+
+                {/* Active Categories Editorial List */}
+                {activeCategories.length === 0 ? (
+                  <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] py-2">
+                    Nessuna categoria attiva. Aggiungine una nuova qui sopra o riattiva una archiviata.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-[#E6DDD1] dark:divide-[#264561] border-t border-[#E6DDD1] dark:border-[#264561]">
+                    {activeCategories.map((cat) => {
+                      const isEditing = editingCatId === cat.id;
+                      const isBusy = catBusyId === cat.id;
+                      return (
+                        <li key={cat.id} className="py-2.5">
+                          {isEditing ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                maxLength={APP_LIMITS.categoryNameMax}
+                                value={editingCatName}
+                                onChange={(e) => {
+                                  setEditingCatName(e.target.value);
+                                  if (categoryError) setCategoryError('');
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    void handleSaveRename(cat);
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    setEditingCatId(null);
+                                    setCategoryError('');
+                                  }
+                                }}
+                                autoFocus
+                                aria-label={`Rinomina ${cat.name}`}
+                                className="flex-1 min-w-0 min-h-[44px] bg-transparent border-b-2 border-[#1A6B8A] dark:border-[#2D8FB3] py-1 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveRename(cat)}
+                                disabled={isBusy}
+                                className="min-h-[44px] px-3.5 rounded-full bg-[#122638] dark:bg-[#E86A52] text-xs font-semibold text-white shrink-0"
+                              >
+                                {isBusy ? 'Salvo...' : 'Salva'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingCatId(null);
+                                  setCategoryError('');
+                                }}
+                                className="min-h-[44px] px-2.5 text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] shrink-0"
+                              >
+                                Annulla
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="w-7 h-7 rounded-full bg-[#1A6B8A]/10 dark:bg-[#2D8FB3]/18 text-[#1A6B8A] dark:text-[#2D8FB3] flex items-center justify-center shrink-0">
+                                  {getSourceIcon(cat.name)}
+                                </span>
+                                <span className="text-sm font-medium text-[#122638] dark:text-[#FAF6F0] truncate">
+                                  {cat.name}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-0.5 shrink-0 -mr-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingCatId(cat.id);
+                                    setEditingCatName(cat.name);
+                                    setCategoryError('');
+                                  }}
+                                  disabled={isBusy}
+                                  aria-label={`Rinomina ${cat.name}`}
+                                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0] hover:bg-[#F2ECE3] dark:hover:bg-[#162D42] transition-colors"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleToggleArchive(cat, true)}
+                                  disabled={isBusy}
+                                  aria-label={`Archivia ${cat.name}`}
+                                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#D1533C] dark:hover:text-[#E86A52] hover:bg-[#E86A52]/10 transition-colors"
+                                >
+                                  <Archive className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {/* Archived Categories Subsection */}
+                {archivedCategories.length > 0 && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowArchived((prev) => !prev)}
+                      aria-expanded={showArchived}
+                      className="min-h-[40px] text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0] transition-colors"
+                    >
+                      {showArchived
+                        ? `Nascondi archiviate (${archivedCategories.length})`
+                        : `Mostra archiviate (${archivedCategories.length})`}
+                    </button>
+
+                    {showArchived && (
+                      <ul className="mt-1 divide-y divide-[#E6DDD1] dark:divide-[#264561] border-t border-[#E6DDD1] dark:border-[#264561]">
+                        {archivedCategories.map((cat) => {
+                          const isBusy = catBusyId === cat.id;
+                          return (
+                            <li
+                              key={cat.id}
+                              className="py-2 flex items-center justify-between gap-3"
+                            >
+                              <span className="text-sm text-[#5B6B79] dark:text-[#9DB0C0] truncate">
+                                {cat.name}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void handleToggleArchive(cat, false)}
+                                disabled={isBusy}
+                                className="min-h-[44px] px-3 rounded-full text-xs font-semibold text-[#1A6B8A] dark:text-[#2D8FB3] hover:bg-[#1A6B8A]/10 inline-flex items-center gap-1.5 shrink-0 transition-colors"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                <span>Riattiva</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </section>
+
+              {/* Vault Settings Form */}
               <form onSubmit={handleSave} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] mb-1">
@@ -214,7 +513,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                     maxLength={APP_LIMITS.titleMax}
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full min-h-[44px] rounded-xl border border-[#E6DDD1] dark:border-[#264561] bg-[#FAF6F0] dark:bg-[#112436] px-3.5 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none focus:border-[#1A6B8A]"
+                    className="w-full min-h-[44px] bg-transparent border-b border-[#E6DDD1] dark:border-[#264561] focus:border-[#1A6B8A] py-1.5 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none"
                   />
                 </div>
 
@@ -229,11 +528,11 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                     max={1000000}
                     value={targetAmount}
                     onChange={(e) => setTargetAmount(e.target.value)}
-                    className="w-full min-h-[44px] rounded-xl border border-[#E6DDD1] dark:border-[#264561] bg-[#FAF6F0] dark:bg-[#112436] px-3.5 text-base font-semibold tabular-nums text-[#122638] dark:text-[#FAF6F0] focus:outline-none focus:border-[#1A6B8A]"
+                    className="w-full min-h-[44px] bg-transparent border-b border-[#E6DDD1] dark:border-[#264561] focus:border-[#1A6B8A] py-1.5 text-base font-semibold tabular-nums text-[#122638] dark:text-[#FAF6F0] focus:outline-none"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3.5">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] mb-1">
                       Nome Partner 1
@@ -244,7 +543,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                       maxLength={APP_LIMITS.partnerNameMax}
                       value={partnerAName}
                       onChange={(e) => setPartnerAName(e.target.value)}
-                      className="w-full min-h-[44px] rounded-xl border border-[#E6DDD1] dark:border-[#264561] bg-[#FAF6F0] dark:bg-[#112436] px-3.5 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none focus:border-[#E86A52]"
+                      className="w-full min-h-[44px] bg-transparent border-b border-[#E6DDD1] dark:border-[#264561] focus:border-[#E86A52] py-1.5 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none"
                     />
                   </div>
                   <div>
@@ -257,7 +556,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                       maxLength={APP_LIMITS.partnerNameMax}
                       value={partnerBName}
                       onChange={(e) => setPartnerBName(e.target.value)}
-                      className="w-full min-h-[44px] rounded-xl border border-[#E6DDD1] dark:border-[#264561] bg-[#FAF6F0] dark:bg-[#112436] px-3.5 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none focus:border-[#1A6B8A]"
+                      className="w-full min-h-[44px] bg-transparent border-b border-[#E6DDD1] dark:border-[#264561] focus:border-[#1A6B8A] py-1.5 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none"
                     />
                   </div>
                 </div>
@@ -271,25 +570,25 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                     maxLength={APP_LIMITS.loveNoteMax}
                     value={loveNote}
                     onChange={(e) => setLoveNote(e.target.value)}
-                    className="w-full min-h-[44px] rounded-xl border border-[#E6DDD1] dark:border-[#264561] bg-[#FAF6F0] dark:bg-[#112436] px-3.5 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none focus:border-[#1A6B8A]"
+                    className="w-full min-h-[44px] bg-transparent border-b border-[#E6DDD1] dark:border-[#264561] focus:border-[#1A6B8A] py-1.5 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={saving}
-                  className="w-full min-h-[48px] rounded-xl bg-[#122638] dark:bg-[#E86A52] text-white text-sm font-semibold hover:bg-[#1C3852] dark:hover:bg-[#D1533C] transition-colors disabled:opacity-60"
+                  className="w-full min-h-[48px] rounded-full bg-[#122638] dark:bg-[#E86A52] text-white text-sm font-semibold hover:bg-[#1C3852] dark:hover:bg-[#D1533C] transition-colors disabled:opacity-60"
                 >
                   {saving ? 'Salvataggio...' : 'Salva modifiche'}
                 </button>
               </form>
 
               {isInstallable && !isInstalled && (
-                <div className="pt-3 border-t border-[#E6DDD1] dark:border-[#264561] pb-safe">
+                <div className="pt-4 border-t border-[#E6DDD1] dark:border-[#264561]">
                   <button
                     type="button"
                     onClick={() => install()}
-                    className="w-full min-h-[44px] rounded-xl bg-[#F2ECE3] dark:bg-[#1E3952] text-xs font-semibold text-[#122638] dark:text-[#FAF6F0] hover:bg-[#E6DDD1] dark:hover:bg-[#264561] transition-colors inline-flex items-center justify-center gap-2"
+                    className="w-full min-h-[44px] rounded-full bg-[#F2ECE3] dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] text-xs font-semibold text-[#122638] dark:text-[#FAF6F0] hover:bg-[#E6DDD1] dark:hover:bg-[#1E3952] transition-colors inline-flex items-center justify-center gap-2"
                   >
                     <Download className="w-4 h-4 text-[#1A6B8A] dark:text-[#2D8FB3]" />
                     Installa app sul dispositivo

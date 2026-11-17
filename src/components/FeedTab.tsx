@@ -5,13 +5,15 @@ import {
   ReactionField,
   toggleContributionReaction,
 } from '../services/vaultService';
-import { Contribution, Vault } from '../types';
+import { Category, Contribution, Vault } from '../types';
+import { resolveContributionCategoryLabel } from '../utils/categories';
 import { formatDateTime, formatEuro } from '../utils/format';
 import { getSourceIcon } from '../utils/sourceIcons';
 
 interface FeedTabProps {
   vault: Vault;
   contributions: Contribution[];
+  categoriesById: Map<string, Category>;
   onOpenDeposit: () => void;
 }
 
@@ -25,6 +27,7 @@ const REACTIONS: Array<{ field: ReactionField; emoji: string; label: string }> =
 export const FeedTab: React.FC<FeedTabProps> = ({
   vault,
   contributions,
+  categoriesById,
   onOpenDeposit,
 }) => {
   const [filter, setFilter] = useState<'all' | 'A' | 'B'>('all');
@@ -155,6 +158,10 @@ export const FeedTab: React.FC<FeedTabProps> = ({
         <div className="divide-y divide-[#E6DDD1] dark:divide-[#264561] border-b border-[#E6DDD1] dark:border-[#264561]">
           {filtered.map((entry) => {
             const isConfirming = confirmDeleteId === entry.id;
+            const categoryLabel = resolveContributionCategoryLabel(
+              entry,
+              categoriesById
+            );
             return (
               <article
                 key={entry.id}
@@ -169,12 +176,12 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                           : 'bg-[#1A6B8A]/12 dark:bg-[#2D8FB3]/20 text-[#1A6B8A] dark:text-[#2D8FB3]'
                       }`}
                     >
-                      {getSourceIcon(entry.sourceTag)}
+                      {getSourceIcon(categoryLabel)}
                     </span>
 
                     <div className="min-w-0 space-y-1">
                       <p className="text-[15px] sm:text-base font-semibold text-[#122638] dark:text-[#FAF6F0] leading-snug break-words">
-                        {entry.note || entry.sourceTag}
+                        {entry.note || categoryLabel}
                       </p>
                       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-[#5B6B79] dark:text-[#9DB0C0]">
                         <span
@@ -187,7 +194,7 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                           {entry.partnerName}
                         </span>
                         <span aria-hidden="true">·</span>
-                        <span>{entry.sourceTag}</span>
+                        <span>{categoryLabel}</span>
                         <span aria-hidden="true">·</span>
                         <span>{formatDateTime(entry.createdAt)}</span>
                       </div>

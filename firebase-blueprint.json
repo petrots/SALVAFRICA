@@ -60,6 +60,48 @@
         "updatedAt"
       ]
     },
+    "Category": {
+      "title": "Category",
+      "description": "Customizable deposit category synced between both partners with archive and last-used support.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "archived": {
+          "type": "boolean"
+        },
+        "lastUsedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Nullable timestamp of most recent deposit using this category."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "archived",
+        "lastUsedAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
     "Contribution": {
       "title": "Contribution",
       "description": "Deposit funded strictly by external side activities.",
@@ -87,6 +129,12 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 50
+        },
+        "categoryId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
         },
         "note": {
           "type": "string",
@@ -135,6 +183,12 @@
         "$ref": "#/entities/Vault"
       },
       "description": "Single shared couple Africa trip savings vault document."
+    },
+    "/vaults/{vaultId}/categories/{categoryId}": {
+      "schema": {
+        "$ref": "#/entities/Category"
+      },
+      "description": "Custom earning categories belonging to the vault."
     },
     "/vaults/{vaultId}/contributions/{contributionId}": {
       "schema": {

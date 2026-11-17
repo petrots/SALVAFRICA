@@ -1,23 +1,22 @@
-# Security Specification — Marechiaro Firestore Rules
+# Security Specification — SALVAFRICA Firestore Rules
 
 ## 1. Data Invariants
-1. Every document in `/vaults/{vaultId}` is owned by `ownerUid` and strictly bounded to at most 2 authenticated `memberUids` with verified email (`email_verified == true`).
-2. All subcollections (`/contributions`, `/wishlist`, `/challenges`) inherit membership strictly via Master Gate `get()` on the parent `/vaults/{vaultId}` document.
-3. Joining a vault requires proving possession of the secret `inviteCode` (`incoming().joinedInviteCode == existing().inviteCode`) while `memberUids.size() == 1`.
-4. All contributions must carry a positive `amount` (`> 0 && <= 100000`), a valid `partnerKey` (`'A'` or `'B'`), and an explicit external `sourceTag`.
-5. Server timestamps (`request.time`) are mandatory on all `createdAt` (on create) and `updatedAt` (on create and update) fields; `createdAt`, `ownerUid`, `authorUid`, and `inviteCode` are immutable.
-6. No blanket `allow read: if isSignedIn()` or `allow list: if isSignedIn()` is permitted anywhere. `/vaultInvites` has `allow list: if false` so invite codes cannot be enumerated.
+1. Access is scoped exclusively to the single shared couple vault (`/vaults/salvafrica-viaggio`); `list` on `/vaults` and `delete` on `/vaults` are forbidden.
+2. Subcollections (`/categories`, `/contributions`) enforce path variable validation (`isValidId`) and parent existence (`parentVaultExists`) via `exists()`.
+3. Categories (`/vaults/salvafrica-viaggio/categories/{categoryId}`) validate strict schemas (`isValidCategory`), enforce `name` length `1..50`, forbid deletion (`allow delete: if false`) so historical movements remain valid, and partition updates strictly into rename (`['name', 'updatedAt']`), archive/reactivate (`['archived', 'updatedAt']`), and usage tracking (`['lastUsedAt', 'updatedAt']` with `lastUsedAt == request.time`).
+4. Contributions (`/vaults/salvafrica-viaggio/contributions/{contributionId}`) enforce positive `amount` (`> 0 && <= 100000`), valid `partnerKey` (`'A'` or `'B'`), `sourceTag` (`1..50`), and optional validated `categoryId` (`1..64`, alphanumeric/`_`/`-`) for backwards compatibility with pre-existing historical records.
+5. Server timestamps (`request.time`) are mandatory on `createdAt` (create) and `updatedAt` (create/update); `id` and `createdAt` are immutable.
 
-## 2. "Dirty Dozen" Adversarial Payloads
-1. **Unauthenticated read/write**: Request with `auth == null` on `/vaults/v1` -> `PERMISSION_DENIED`.
-2. **Unverified email write**: Request with `auth.token.email_verified == false` -> `PERMISSION_DENIED`.
-3. **Shadow field injection on Vault create**: Including `{ extraAdmin: true }` in payload -> `PERMISSION_DENIED` (`hasOnly` check).
-4. **Privilege escalation on Vault join**: Third user attempting to join when `memberUids.size() == 2` -> `PERMISSION_DENIED`.
-5. **Invite code bypass on Vault join**: Joining `/vaults/v1` with wrong `joinedInviteCode` -> `PERMISSION_DENIED`.
-6. **Non-member reading parent Vault**: Authenticated outsider calling `get` on `/vaults/v1` -> `PERMISSION_DENIED`.
-7. **Unscoped Vault list query**: Calling `list` on `/vaults` without `where('memberUids', 'array-contains', uid)` -> `PERMISSION_DENIED`.
-8. **Invite enumeration attack**: Calling `list` on `/vaultInvites` -> `PERMISSION_DENIED`.
-9. **Negative or zero deposit**: Creating contribution with `amount: -50` or `amount: 0` -> `PERMISSION_DENIED`.
-10. **Identity spoofing on Contribution**: Creating contribution with `authorUid != request.auth.uid` -> `PERMISSION_DENIED`.
-11. **Timestamp spoofing**: Creating contribution with backdated client `createdAt` != `request.time` -> `PERMISSION_DENIED`.
-12. **Resource poisoning**: Sending a 2KB string in `vaultId` or `note` (`> 200` chars) -> `PERMISSION_DENIED`.
+## 2. Adversarial "Dirty Dozen" Payloads
+1. Access to another vault ID (`/vaults/other-vault`) -> `PERMISSION_DENIED`.
+2. Unscoped `/vaults` `list` query -> `PERMISSION_DENIED`.
+3. Shadow field injection (`{ extraField: true }`) on Vault, Category, or Contribution -> `PERMISSION_DENIED` (`hasOnly`).
+4. Empty or oversized category name (`name: ""` or `> 50` chars) -> `PERMISSION_DENIED`.
+5. Deleting a category document -> `PERMISSION_DENIED` (`allow delete: if false`).
+6. Client-spoofed `lastUsedAt` or `updatedAt` != `request.time` on category update -> `PERMISSION_DENIED`.
+7. Invalid `categoryId` with special characters (`../../x`) -> `PERMISSION_DENIED` (`isValidId`).
+8. Negative or zero contribution `amount` (`amount: 0` or `-10`) -> `PERMISSION_DENIED`.
+9. Oversized contribution `amount` (`amount: 200000`) -> `PERMISSION_DENIED`.
+10. Spoofed `createdAt` modification during contribution or category update -> `PERMISSION_DENIED`.
+11. Unallowed field mix in contribution update (e.g. modifying `amount` with `reactionHeart` only branch) -> `PERMISSION_DENIED`.
+12. Deleting the parent vault document -> `PERMISSION_DENIED`.

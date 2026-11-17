@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, Loader2, X } from 'lucide-react';
+import { Check, ChevronDown, Loader2, Plus, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { addContribution } from '../services/vaultService';
+import { addContribution, createCategory } from '../services/vaultService';
 import {
   APP_LIMITS,
-  EXTERNAL_SOURCE_TAGS,
+  Category,
   PartnerKey,
   Vault,
 } from '../types';
@@ -16,6 +16,9 @@ interface DepositSheetProps {
   isOpen: boolean;
   onClose: () => void;
   vault: Vault;
+  categories: Category[];
+  activeCategories: Category[];
+  categoriesLoaded: boolean;
   onDepositStart?: () => void;
   onSuccessDeposit: (addedAmount: number) => boolean | void;
 }
@@ -50,16 +53,29 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
   isOpen,
   onClose,
   vault,
+  categories,
+  activeCategories,
+  categoriesLoaded,
   onDepositStart,
   onSuccessDeposit,
 }) => {
   const [amountStr, setAmountStr] = useState('20');
   const [amountTouched, setAmountTouched] = useState(false);
   const [partnerKey, setPartnerKey] = useState<PartnerKey>('A');
-  const [sourceTag, setSourceTag] = useState<string>(EXTERNAL_SOURCE_TAGS[0]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [pendingCreatedCategory, setPendingCreatedCategory] = useState<Category | null>(
+    null
+  );
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [creatingCategoryLoading, setCreatingCategoryLoading] = useState(false);
+  const [categoryError, setCategoryError] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [confirmedAmount, setConfirmedAmount] = useState<number | null>(null);
+  const [confirmedDeposit, setConfirmedDeposit] = useState<{
+    amount: number;
+    categoryName: string;
+  } | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [viewportMetrics, setViewportMetrics] = useState<{
@@ -70,6 +86,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
   const submittingLockRef = useRef(false);
   const closeTimerRef = useRef<number | null>(null);
   const amountInputRef = useRef<HTMLInputElement | null>(null);
+  const newCategoryInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
@@ -82,11 +99,15 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
 
     submittingLockRef.current = false;
     setSubmitting(false);
-    setConfirmedAmount(null);
+    setConfirmedDeposit(null);
     setErrorMsg('');
     setAmountStr('20');
     setAmountTouched(false);
-    setSourceTag(EXTERNAL_SOURCE_TAGS[0]);
+    setPendingCreatedCategory(null);
+    setCreatingCategory(false);
+    setNewCategoryName('');
+    setCategoryError('');
+    setSelectedCategoryId(activeCategories[0]?.id ?? '');
     setNote('');
     setKeyboardOpen(false);
     try {
@@ -95,7 +116,34 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
     } catch {
       setPartnerKey('A');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
+
+  const displayedCategories = useMemo(() => {
+    if (
+      pendingCreatedCategory &&
+      !activeCategories.some((c) => c.id === pendingCreatedCategory.id)
+    ) {
+      return [...activeCategories, pendingCreatedCategory];
+    }
+    return activeCategories;
+  }, [activeCategories, pendingCreatedCategory]);
+
+  // Ensure a valid active category is selected if categories finish loading after sheet opens
+  useEffect(() => {
+    if (!isOpen) return;
+    if (
+      displayedCategories.length > 0 &&
+      !displayedCategories.some((c) => c.id === selectedCategoryId)
+    ) {
+      setSelectedCategoryId(displayedCategories[0].id);
+    }
+  }, [isOpen, displayedCategories, selectedCategoryId]);
+
+  const selectedCategory = useMemo(
+    () => displayedCategories.find((c) => c.id === selectedCategoryId) ?? null,
+    [displayedCategories, selectedCategoryId]
+  );
 
   // Keep modal fitted above the iPhone software keyboard when visualViewport shrinks or shifts
   useEffect(() => {
@@ -179,9 +227,45 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
     }
   };
 
-  const handleSelectSource = (tag: string) => {
+  const handleSelectCategory = (cat: Category) => {
     dismissKeyboard();
-    setSourceTag(tag);
+    setSelectedCategoryId(cat.id);
+    setCreatingCategory(false);
+    setCategoryError('');
+    setErrorMsg('');
+  };
+
+  const handleOpenNewCategory = () => {
+    setCreatingCategory(true);
+    setNewCategoryName('');
+    setCategoryError('');
+    window.setTimeout(() => {
+      newCategoryInputRef.current?.focus();
+    }, 60);
+  };
+
+  const handleCreateCategory = async () => {
+    if (creatingCategoryLoading) return;
+    setCategoryError('');
+    setCreatingCategoryLoading(true);
+    try {
+      const created = await createCategory(vault.id, newCategoryName, categories);
+      setPendingCreatedCategory(created);
+      setSelectedCategoryId(created.id);
+      setCreatingCategory(false);
+      setNewCategoryName('');
+      setErrorMsg('');
+      triggerHaptic('selection');
+      dismissKeyboard();
+    } catch (err) {
+      setCategoryError(
+        err instanceof Error
+          ? err.message
+          : 'Impossibile creare la categoria. Riprova.'
+      );
+    } finally {
+      setCreatingCategoryLoading(false);
+    }
   };
 
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
@@ -203,7 +287,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submittingLockRef.current || confirmedAmount !== null) return;
+    if (submittingLockRef.current || confirmedDeposit !== null) return;
 
     setAmountTouched(true);
     setErrorMsg('');
@@ -211,6 +295,11 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
     if (!isAmountValid) {
       setErrorMsg('Inserisci un importo valido maggiore di 0 € (es. 2,50).');
       amountInputRef.current?.focus();
+      return;
+    }
+
+    if (!selectedCategory) {
+      setErrorMsg('Seleziona o crea una categoria per continuare.');
       return;
     }
 
@@ -231,14 +320,18 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
         amount: parsedAmount,
         partnerKey,
         partnerName,
-        sourceTag,
+        sourceTag: selectedCategory.name,
+        categoryId: selectedCategory.id,
         note,
       });
       const reachedMilestone = onSuccessDeposit(parsedAmount);
       if (!reachedMilestone) {
         triggerHaptic('success');
       }
-      setConfirmedAmount(parsedAmount);
+      setConfirmedDeposit({
+        amount: parsedAmount,
+        categoryName: selectedCategory.name,
+      });
       closeTimerRef.current = window.setTimeout(() => {
         onClose();
       }, 1150);
@@ -342,7 +435,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
               </div>
             </div>
 
-            {confirmedAmount !== null ? (
+            {confirmedDeposit !== null ? (
               <motion.div
                 initial={{ opacity: 0, scale: 0.94 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -357,14 +450,14 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                     Versamento registrato
                   </p>
                   <p className="font-display text-4xl font-semibold tabular-nums text-[#122638] dark:text-[#FAF6F0]">
-                    +{formatEuro(confirmedAmount)}
+                    +{formatEuro(confirmedDeposit.amount)}
                   </p>
                   <p className="text-sm text-[#5B6B79] dark:text-[#9DB0C0]">
                     Aggiunto da{' '}
                     <span className="font-semibold text-[#122638] dark:text-[#FAF6F0]">
                       {selectedPartnerName}
                     </span>{' '}
-                    · {sourceTag}
+                    · {confirmedDeposit.categoryName}
                   </p>
                 </div>
               </motion.div>
@@ -507,40 +600,121 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                     </div>
                   </div>
 
-                  {/* 3. External Source Selector */}
-                  <div className="pt-4 border-t border-[#E6DDD1] dark:border-[#264561]">
-                    <label className="block text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] mb-2.5">
+                  {/* 3. Custom Category Selector (Ordered by Last Used) + Inline Creation */}
+                  <div className="pt-4 border-t border-[#E6DDD1] dark:border-[#264561] space-y-2.5">
+                    <label className="block text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0]">
                       Da quale attività esterna arrivano?
                     </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {EXTERNAL_SOURCE_TAGS.map((tag) => {
-                        const selected = sourceTag === tag;
-                        return (
-                          <button
-                            key={tag}
-                            type="button"
-                            onClick={() => handleSelectSource(tag)}
-                            aria-pressed={selected}
-                            className={`min-h-[46px] rounded-xl px-3 py-2 text-xs text-left transition-colors flex items-center gap-2 ${
-                              selected
-                                ? 'bg-[#122638] dark:bg-[#1A6B8A] text-white font-semibold'
-                                : 'bg-[#F2ECE3]/65 dark:bg-[#162D42]/80 text-[#122638] dark:text-[#FAF6F0] font-medium border border-[#E6DDD1]/90 dark:border-[#264561]/90 hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952]'
-                            }`}
-                          >
-                            <span
-                              className={`shrink-0 ${
+
+                    {!categoriesLoaded && displayedCategories.length === 0 ? (
+                      <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] py-2">
+                        Caricamento categorie...
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {displayedCategories.map((cat) => {
+                          const selected = selectedCategory?.id === cat.id;
+                          return (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => handleSelectCategory(cat)}
+                              aria-pressed={selected}
+                              className={`min-h-[44px] max-w-full rounded-xl px-3.5 py-2 text-xs text-left transition-colors inline-flex items-center gap-2 ${
                                 selected
-                                  ? 'text-[#F7C76E]'
-                                  : 'text-[#1A6B8A] dark:text-[#2D8FB3]'
+                                  ? 'bg-[#122638] dark:bg-[#1A6B8A] text-white font-semibold'
+                                  : 'bg-[#F2ECE3]/75 dark:bg-[#162D42] text-[#122638] dark:text-[#FAF6F0] font-medium border border-[#E6DDD1] dark:border-[#264561] hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952]'
                               }`}
                             >
-                              {getSourceIcon(tag)}
-                            </span>
-                            <span className="line-clamp-2 leading-tight">{tag}</span>
+                              <span
+                                className={`shrink-0 ${
+                                  selected
+                                    ? 'text-[#F7C76E]'
+                                    : 'text-[#1A6B8A] dark:text-[#2D8FB3]'
+                                }`}
+                              >
+                                {getSourceIcon(cat.name)}
+                              </span>
+                              <span className="truncate leading-tight">{cat.name}</span>
+                            </button>
+                          );
+                        })}
+
+                        <button
+                          type="button"
+                          onClick={handleOpenNewCategory}
+                          aria-expanded={creatingCategory}
+                          className={`min-h-[44px] rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors inline-flex items-center gap-1.5 border border-dashed ${
+                            creatingCategory
+                              ? 'border-[#E86A52] bg-[#E86A52]/12 text-[#D1533C] dark:text-[#E86A52]'
+                              : 'border-[#E86A52]/65 text-[#D1533C] dark:text-[#E86A52] hover:bg-[#E86A52]/10'
+                          }`}
+                        >
+                          <Plus className="w-3.5 h-3.5 stroke-[2.25]" />
+                          <span>Nuova categoria</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {creatingCategory && (
+                      <div className="pt-2 space-y-2 border-t border-[#E6DDD1]/70 dark:border-[#264561]/70">
+                        <div className="flex items-center gap-2">
+                          <input
+                            ref={newCategoryInputRef}
+                            type="text"
+                            maxLength={APP_LIMITS.categoryNameMax}
+                            value={newCategoryName}
+                            onChange={(e) => {
+                              setNewCategoryName(e.target.value);
+                              if (categoryError) setCategoryError('');
+                            }}
+                            onFocus={handleInputFocus}
+                            onBlur={handleInputBlur}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                void handleCreateCategory();
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                setCreatingCategory(false);
+                                setCategoryError('');
+                              }
+                            }}
+                            enterKeyHint="done"
+                            placeholder="Es. Ripetizioni, Vinted, Lavoretto..."
+                            aria-label="Nome della nuova categoria"
+                            className="flex-1 min-w-0 min-h-[44px] bg-transparent border-b-2 border-[#E6DDD1] dark:border-[#264561] focus:border-[#E86A52] py-1.5 text-base text-[#122638] dark:text-[#FAF6F0] placeholder:text-[#5B6B79]/60 dark:placeholder:text-[#9DB0C0]/50 focus:outline-none scroll-mb-6"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => void handleCreateCategory()}
+                            disabled={creatingCategoryLoading}
+                            className="min-h-[44px] px-4 rounded-full bg-[#122638] dark:bg-[#E86A52] text-xs font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50 shrink-0"
+                          >
+                            {creatingCategoryLoading ? 'Salvo...' : 'Crea'}
                           </button>
-                        );
-                      })}
-                    </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCreatingCategory(false);
+                              setCategoryError('');
+                            }}
+                            className="min-h-[44px] px-2.5 text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0] shrink-0"
+                          >
+                            Annulla
+                          </button>
+                        </div>
+
+                        {categoryError && (
+                          <p className="text-xs font-medium text-[#D1533C] dark:text-[#E86A52]">
+                            {categoryError}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* 4. Optional Note */}
@@ -560,7 +734,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                       onChange={(e) => setNote(e.target.value)}
                       onFocus={handleInputFocus}
                       onBlur={handleInputBlur}
-                      placeholder="Es. Venduta giacca su Vinted · Per l’Africa"
+                      placeholder="Es. Serata ristorante · Per l’Africa"
                       className="w-full min-h-[44px] bg-transparent border-b border-[#E6DDD1] dark:border-[#264561] focus:border-[#1A6B8A] dark:focus:border-[#2D8FB3] py-2 text-base text-[#122638] dark:text-[#FAF6F0] placeholder:text-[#5B6B79]/60 dark:placeholder:text-[#9DB0C0]/50 focus:outline-none transition-colors scroll-mb-6"
                     />
                   </div>
@@ -570,7 +744,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                 <div className="shrink-0 border-t border-[#E6DDD1] dark:border-[#264561] bg-[#FAF6F0] dark:bg-[#0E1F2E] px-5 sm:px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                   <button
                     type="submit"
-                    disabled={!isAmountValid || submitting}
+                    disabled={!isAmountValid || !selectedCategory || submitting}
                     className="w-full min-h-[50px] rounded-full bg-[#E86A52] px-5 py-3 text-sm font-semibold text-white hover:bg-[#D1533C] active:scale-[0.99] transition-all disabled:opacity-45 disabled:pointer-events-none flex items-center justify-center gap-2"
                   >
                     {submitting ? (
