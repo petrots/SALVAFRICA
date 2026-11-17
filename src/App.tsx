@@ -42,6 +42,31 @@ export default function App() {
 
   const [justDepositedKey, setJustDepositedKey] = useState(0);
   const [milestoneBanner, setMilestoneBanner] = useState<string | null>(null);
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('salvafrica_theme') === 'dark';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isDark) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.setAttribute('content', isDark ? '#0E1F2E' : '#FAF8F5');
+    }
+    try {
+      window.localStorage.setItem('salvafrica_theme', isDark ? 'dark' : 'light');
+    } catch {
+      // Ignore storage restrictions
+    }
+  }, [isDark]);
 
   // Sync the single shared SALVAFRICA vault directly and auto-initialize if absent
   useEffect(() => {
@@ -156,28 +181,28 @@ export default function App() {
 
   if (!vaultLoaded) {
     return (
-      <div className="h-[100dvh] w-full overflow-hidden bg-[#FAF6F0] text-[#122638] flex items-center justify-center p-6">
+      <div className="h-[100dvh] w-full overflow-hidden bg-[#FAF6F0] dark:bg-[#0E1F2E] text-[#122638] dark:text-[#FAF6F0] flex items-center justify-center p-6">
         <div className="text-center space-y-2">
-          <p className="font-display text-2xl font-semibold text-[#122638]">
+          <p className="font-display text-2xl font-semibold text-[#122638] dark:text-[#FAF6F0]">
             SALVAFRICA
           </p>
-          <p className="text-xs text-[#5B6B79]">Caricamento salvadanaio...</p>
+          <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0]">Caricamento salvadanaio...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-[100dvh] w-full overflow-hidden bg-[#FAF6F0] text-[#122638] flex flex-col">
+    <div className="h-[100dvh] w-full overflow-hidden bg-[#FAF6F0] dark:bg-[#0E1F2E] text-[#122638] dark:text-[#FAF6F0] flex flex-col transition-colors duration-200">
       <OfflineIndicator />
 
       {/* Top Navigation Bar */}
-      <header className="shrink-0 z-30 bg-[#FAF6F0]/95 backdrop-blur-md border-b border-[#E6DDD1] pt-safe">
+      <header className="shrink-0 z-30 bg-[#FAF6F0]/95 dark:bg-[#0E1F2E]/95 backdrop-blur-md border-b border-[#E6DDD1] dark:border-[#264561] pt-safe transition-colors duration-200">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 h-14 md:h-16 flex items-center justify-between gap-4">
           <button
             type="button"
             onClick={() => setActiveTab('home')}
-            className="inline-flex items-center gap-2.5 font-display text-xl font-semibold tracking-tight text-[#122638] whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-2.5 font-display text-xl font-semibold tracking-tight text-[#122638] dark:text-[#FAF6F0] whitespace-nowrap shrink-0"
           >
             <svg viewBox="0 0 28 28" className="w-6 h-6 shrink-0" aria-hidden="true">
               <circle cx="14" cy="14" r="14" fill="#122638" />
@@ -187,14 +212,14 @@ export default function App() {
             <span>SALVAFRICA</span>
           </button>
 
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-[#5B6B79]">
+          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-[#5B6B79] dark:text-[#9DB0C0]">
             <button
               type="button"
               onClick={() => setActiveTab('home')}
               className={`min-h-[40px] transition-colors whitespace-nowrap shrink-0 ${
                 activeTab === 'home'
-                  ? 'text-[#122638] font-semibold underline decoration-[#E86A52] decoration-2 underline-offset-8'
-                  : 'hover:text-[#122638]'
+                  ? 'text-[#122638] dark:text-[#FAF6F0] font-semibold underline decoration-[#E86A52] decoration-2 underline-offset-8'
+                  : 'hover:text-[#122638] dark:hover:text-[#FAF6F0]'
               }`}
             >
               Salvadanaio
@@ -204,8 +229,8 @@ export default function App() {
               onClick={() => setActiveTab('feed')}
               className={`min-h-[40px] transition-colors whitespace-nowrap shrink-0 ${
                 activeTab === 'feed'
-                  ? 'text-[#122638] font-semibold underline decoration-[#E86A52] decoration-2 underline-offset-8'
-                  : 'hover:text-[#122638]'
+                  ? 'text-[#122638] dark:text-[#FAF6F0] font-semibold underline decoration-[#E86A52] decoration-2 underline-offset-8'
+                  : 'hover:text-[#122638] dark:hover:text-[#FAF6F0]'
               }`}
             >
               Movimenti
@@ -213,7 +238,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}
-              className="min-h-[40px] transition-colors hover:text-[#122638] whitespace-nowrap shrink-0"
+              className="min-h-[40px] transition-colors hover:text-[#122638] dark:hover:text-[#FAF6F0] whitespace-nowrap shrink-0"
             >
               Impostazioni
             </button>
@@ -224,9 +249,9 @@ export default function App() {
               type="button"
               onClick={() => setSettingsOpen(true)}
               aria-label="Impostazioni salvadanaio"
-              className="md:hidden min-h-[40px] px-3 rounded-xl bg-[#F2ECE3] text-xs font-semibold text-[#122638] hover:bg-[#E6DDD1] transition-colors inline-flex items-center gap-1.5"
+              className="md:hidden min-h-[40px] px-3 rounded-xl bg-[#F2ECE3] dark:bg-[#1E3952] text-xs font-semibold text-[#122638] dark:text-[#FAF6F0] hover:bg-[#E6DDD1] dark:hover:bg-[#264561] transition-colors inline-flex items-center gap-1.5"
             >
-              <Settings className="w-4 h-4 text-[#5B6B79]" />
+              <Settings className="w-4 h-4 text-[#5B6B79] dark:text-[#9DB0C0]" />
               <span>Impostazioni</span>
             </button>
 
@@ -245,7 +270,7 @@ export default function App() {
       {/* Milestone Unlocked Celebration Banner */}
       {milestoneBanner && (
         <div className="shrink-0 mx-auto max-w-6xl w-full px-4 sm:px-6 pt-3">
-          <div className="rounded-2xl bg-[#E09F3E]/15 border border-[#E09F3E]/40 px-4 py-3 text-sm font-semibold text-[#122638] flex items-center justify-center gap-2">
+          <div className="rounded-2xl bg-[#E09F3E]/15 border border-[#E09F3E]/40 px-4 py-3 text-sm font-semibold text-[#122638] dark:text-[#FAF6F0] flex items-center justify-center gap-2">
             <Sparkles className="w-4 h-4 text-[#E09F3E]" />
             <span>{milestoneBanner}</span>
           </div>
@@ -254,7 +279,7 @@ export default function App() {
 
       {/* Scrollable Main Content (isolated scroll container, zero overscroll bleed) */}
       <main className="flex-1 min-h-0 overflow-y-auto overscroll-none">
-        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 pb-8 md:pb-12">
+        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 pb-10 md:pb-12">
           {activeTab === 'home' && (
             <DashboardTab
               vault={vault}
@@ -283,41 +308,62 @@ export default function App() {
       {/* Mobile Bottom Tab Bar anchored flush to viewport bottom */}
       <nav
         aria-label="Navigazione principale"
-        className="md:hidden shrink-0 z-40 bg-white border-t border-[#E6DDD1] pb-safe"
+        className="md:hidden shrink-0 z-40 bg-white/95 dark:bg-[#162D42]/95 backdrop-blur-md border-t border-[#E6DDD1] dark:border-[#264561] pb-safe shadow-[0_-4px_20px_-8px_rgba(18,38,56,0.08)] dark:shadow-[0_-4px_20px_-8px_rgba(0,0,0,0.45)] transition-colors duration-200"
       >
-        <div className="grid grid-cols-3 items-center h-16 px-4">
+        <div className="grid grid-cols-3 items-end h-[64px] px-3 pb-1.5">
           <button
             type="button"
             onClick={() => setActiveTab('home')}
-            className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 transition-colors ${
-              activeTab === 'home' ? 'text-[#E86A52]' : 'text-[#5B6B79]'
+            className={`min-h-[48px] flex flex-col items-center justify-end gap-1 pb-0.5 transition-colors ${
+              activeTab === 'home' ? 'text-[#E86A52]' : 'text-[#5B6B79] dark:text-[#9DB0C0]'
             }`}
           >
-            <PiggyBank className="w-5 h-5" />
-            <span className="text-[11px] font-medium tracking-tight">Salvadanaio</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('feed')}
-            className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 transition-colors ${
-              activeTab === 'feed' ? 'text-[#E86A52]' : 'text-[#5B6B79]'
-            }`}
-          >
-            <ListChecks className="w-5 h-5" />
-            <span className="text-[11px] font-medium tracking-tight">Movimenti</span>
+            <PiggyBank
+              className={`w-[22px] h-[22px] ${
+                activeTab === 'home' ? 'stroke-[2.25]' : 'stroke-[1.75]'
+              }`}
+            />
+            <span
+              className={`text-[11px] leading-none tracking-tight ${
+                activeTab === 'home' ? 'font-semibold' : 'font-medium'
+              }`}
+            >
+              Salvadanaio
+            </span>
           </button>
 
           <button
             type="button"
             onClick={() => setDepositOpen(true)}
-            className="min-h-[48px] flex flex-col items-center justify-center gap-0.5"
+            aria-label="Versa extra"
+            className="flex flex-col items-center justify-end gap-1 pb-0.5 active:scale-95 transition-transform"
           >
-            <span className="w-11 h-8 rounded-xl bg-[#E86A52] text-white flex items-center justify-center shadow-xs">
-              <Plus className="w-5 h-5" />
+            <span className="w-[62px] h-[50px] rounded-[18px] bg-gradient-to-br from-[#E86A52] to-[#D1533C] text-white flex items-center justify-center shadow-[0_8px_18px_-4px_rgba(232,106,82,0.48)] ring-[4px] ring-white dark:ring-[#162D42]">
+              <Plus className="w-7 h-7 stroke-[2.5]" />
             </span>
-            <span className="text-[11px] font-semibold tracking-tight text-[#E86A52]">
+            <span className="text-[11px] leading-none font-bold tracking-tight text-[#E86A52]">
               Versa
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('feed')}
+            className={`min-h-[48px] flex flex-col items-center justify-end gap-1 pb-0.5 transition-colors ${
+              activeTab === 'feed' ? 'text-[#E86A52]' : 'text-[#5B6B79] dark:text-[#9DB0C0]'
+            }`}
+          >
+            <ListChecks
+              className={`w-[22px] h-[22px] ${
+                activeTab === 'feed' ? 'stroke-[2.25]' : 'stroke-[1.75]'
+              }`}
+            />
+            <span
+              className={`text-[11px] leading-none tracking-tight ${
+                activeTab === 'feed' ? 'font-semibold' : 'font-medium'
+              }`}
+            >
+              Movimenti
             </span>
           </button>
         </div>
@@ -335,6 +381,8 @@ export default function App() {
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         vault={vault}
+        isDark={isDark}
+        onToggleTheme={() => setIsDark((prev) => !prev)}
       />
     </div>
   );

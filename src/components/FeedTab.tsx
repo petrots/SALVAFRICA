@@ -53,27 +53,27 @@ export const FeedTab: React.FC<FeedTabProps> = ({
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold text-[#1A6B8A]">
+          <p className="text-xs font-semibold text-[#1A6B8A] dark:text-[#2D8FB3]">
             {filtered.length} {filtered.length === 1 ? 'movimento' : 'movimenti'} ·{' '}
             <span className="tabular-nums">{formatEuro(filteredTotal)}</span>
           </p>
-          <h1 className="font-display text-2xl sm:text-3xl font-semibold text-[#122638] mt-0.5">
+          <h1 className="font-display text-2xl sm:text-3xl font-semibold text-[#122638] dark:text-[#FAF6F0] mt-0.5">
             Diario dei versamenti
           </h1>
-          <p className="text-xs text-[#5B6B79] mt-1">
+          <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] mt-1">
             Solo entrate extra esterne (zero stipendio e zero risparmi), con reazioni di coppia
           </p>
         </div>
 
         {/* Segmented Filter Tabs */}
-        <div className="inline-flex items-center gap-1 p-1 rounded-2xl bg-[#F2ECE3] self-start sm:self-auto">
+        <div className="inline-flex items-center gap-1 p-1 rounded-2xl bg-[#F2ECE3] dark:bg-[#1E3952] self-start sm:self-auto">
           <button
             type="button"
             onClick={() => setFilter('all')}
             className={`min-h-[40px] px-3.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
               filter === 'all'
-                ? 'bg-white text-[#122638] shadow-xs'
-                : 'text-[#5B6B79] hover:text-[#122638]'
+                ? 'bg-white dark:bg-[#162D42] text-[#122638] dark:text-[#FAF6F0] shadow-xs'
+                : 'text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0]'
             }`}
           >
             Tutti
@@ -83,8 +83,8 @@ export const FeedTab: React.FC<FeedTabProps> = ({
             onClick={() => setFilter('A')}
             className={`min-h-[40px] px-3.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
               filter === 'A'
-                ? 'bg-white text-[#122638] shadow-xs'
-                : 'text-[#5B6B79] hover:text-[#122638]'
+                ? 'bg-white dark:bg-[#162D42] text-[#122638] dark:text-[#FAF6F0] shadow-xs'
+                : 'text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0]'
             }`}
           >
             {vault.partnerAName}
@@ -94,8 +94,8 @@ export const FeedTab: React.FC<FeedTabProps> = ({
             onClick={() => setFilter('B')}
             className={`min-h-[40px] px-3.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
               filter === 'B'
-                ? 'bg-white text-[#122638] shadow-xs'
-                : 'text-[#5B6B79] hover:text-[#122638]'
+                ? 'bg-white dark:bg-[#162D42] text-[#122638] dark:text-[#FAF6F0] shadow-xs'
+                : 'text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0]'
             }`}
           >
             {vault.partnerBName}
@@ -104,11 +104,11 @@ export const FeedTab: React.FC<FeedTabProps> = ({
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded-[24px] bg-white border border-[#E6DDD1] p-8 text-center space-y-4">
-          <p className="font-display text-xl font-semibold text-[#122638]">
+        <div className="rounded-[24px] bg-white dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] p-8 text-center space-y-4 transition-colors">
+          <p className="font-display text-xl font-semibold text-[#122638] dark:text-[#FAF6F0]">
             Nessun versamento qui per ora
           </p>
-          <p className="text-sm text-[#5B6B79] max-w-md mx-auto">
+          <p className="text-sm text-[#5B6B79] dark:text-[#9DB0C0] max-w-md mx-auto">
             Aggiungete un’entrata da una vendita, un lavoretto, una scommessa o monetine trovate.
           </p>
           <button
@@ -121,29 +121,32 @@ export const FeedTab: React.FC<FeedTabProps> = ({
           </button>
         </div>
       ) : (
-        <div className="rounded-[24px] bg-white border border-[#E6DDD1] divide-y divide-[#E6DDD1] overflow-hidden">
+        <div className="rounded-[24px] bg-white dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] divide-y divide-[#E6DDD1] dark:divide-[#264561] overflow-hidden transition-colors">
           {filtered.map((entry) => {
             const isConfirming = confirmDeleteId === entry.id;
             return (
-              <article key={entry.id} className="p-4 sm:p-5 space-y-3 hover:bg-[#FAF6F0]/60 transition-colors">
+              <article
+                key={entry.id}
+                className="p-4 sm:p-5 space-y-3 hover:bg-[#FAF6F0]/60 dark:hover:bg-[#1E3952]/50 transition-colors"
+              >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-3.5 min-w-0">
                     <span
                       className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
                         entry.partnerKey === 'A'
-                          ? 'bg-[#E86A52]/12 text-[#D1533C]'
-                          : 'bg-[#1A6B8A]/12 text-[#1A6B8A]'
+                          ? 'bg-[#E86A52]/12 dark:bg-[#E86A52]/20 text-[#D1533C] dark:text-[#E86A52]'
+                          : 'bg-[#1A6B8A]/12 dark:bg-[#2D8FB3]/20 text-[#1A6B8A] dark:text-[#2D8FB3]'
                       }`}
                     >
                       {getSourceIcon(entry.sourceTag)}
                     </span>
 
                     <div className="min-w-0 space-y-1">
-                      <p className="text-sm sm:text-base font-semibold text-[#122638] leading-snug">
+                      <p className="text-sm sm:text-base font-semibold text-[#122638] dark:text-[#FAF6F0] leading-snug">
                         {entry.note || entry.sourceTag}
                       </p>
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[#5B6B79]">
-                        <span className="font-semibold text-[#122638]">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[#5B6B79] dark:text-[#9DB0C0]">
+                        <span className="font-semibold text-[#122638] dark:text-[#FAF6F0]">
                           {entry.partnerName}
                         </span>
                         <span aria-hidden="true">·</span>
@@ -155,7 +158,7 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                   </div>
 
                   <div className="text-right shrink-0">
-                    <span className="font-display text-xl sm:text-2xl font-semibold tabular-nums text-[#122638]">
+                    <span className="font-display text-xl sm:text-2xl font-semibold tabular-nums text-[#122638] dark:text-[#FAF6F0]">
                       +{formatEuro(entry.amount)}
                     </span>
                   </div>
@@ -175,8 +178,8 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                           aria-pressed={active}
                           className={`min-h-[38px] min-w-[40px] px-2.5 rounded-xl text-sm transition-all border inline-flex items-center justify-center ${
                             active
-                              ? 'bg-[#E86A52]/12 border-[#E86A52]/40 scale-105'
-                              : 'bg-[#FAF6F0] border-[#E6DDD1] opacity-75 hover:opacity-100'
+                              ? 'bg-[#E86A52]/12 dark:bg-[#E86A52]/20 border-[#E86A52]/40 scale-105'
+                              : 'bg-[#FAF6F0] dark:bg-[#112436] border-[#E6DDD1] dark:border-[#264561] opacity-75 hover:opacity-100'
                           }`}
                         >
                           <span>{reaction.emoji}</span>
@@ -197,7 +200,7 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                       <button
                         type="button"
                         onClick={() => setConfirmDeleteId(null)}
-                        className="min-h-[38px] px-3 rounded-xl text-xs font-semibold text-[#5B6B79] hover:bg-[#F2ECE3]"
+                        className="min-h-[38px] px-3 rounded-xl text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952]"
                       >
                         Annulla
                       </button>
@@ -207,7 +210,7 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                       type="button"
                       onClick={() => setConfirmDeleteId(entry.id)}
                       aria-label="Elimina versamento"
-                      className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl text-[#5B6B79] hover:text-[#D1533C] hover:bg-[#E86A52]/10 transition-colors"
+                      className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#D1533C] dark:hover:text-[#E86A52] hover:bg-[#E86A52]/10 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

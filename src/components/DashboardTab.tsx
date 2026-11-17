@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import {
   ArrowRight,
   Check,
+  ChevronDown,
   Compass,
   Flag,
   Pencil,
   Plus,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { updateLoveNote } from '../services/vaultService';
 import { APP_LIMITS, Contribution, MILESTONES, Vault } from '../types';
 import { formatDateTime, formatEuro } from '../utils/format';
@@ -41,6 +43,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const [editingNote, setEditingNote] = useState(false);
   const [noteDraft, setNoteDraft] = useState(vault.loveNote);
   const [savingNote, setSavingNote] = useState(false);
+  const [milestonesExpanded, setMilestonesExpanded] = useState(false);
 
   const target = Math.max(1, vault.targetAmount);
   const rawPct = (totalSaved / target) * 100;
@@ -73,7 +76,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     <div className="space-y-6">
 
       {/* Flagship Fintech Hero Vault Card — Deep Ocean & Sunset Horizon */}
-      <section className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#122638] via-[#17435E] to-[#1A6B8A] text-[#FAF6F0] p-6 sm:p-9 shadow-lg shadow-[#122638]/10">
+      <section className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#122638] via-[#17435E] to-[#1A6B8A] dark:border dark:border-[#264561] text-[#FAF6F0] p-6 sm:p-9 shadow-lg shadow-[#122638]/10 dark:shadow-black/30">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -top-24 -right-16 w-80 h-80 rounded-full bg-[#E86A52]/25 blur-3xl"
@@ -167,7 +170,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       </section>
 
       {/* Subtle Editable Couple Note Strip */}
-      <div className="rounded-2xl bg-white border border-[#E6DDD1] px-5 py-3.5">
+      <div className="rounded-2xl bg-white dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] px-5 py-3.5 transition-colors">
         {editingNote ? (
           <form onSubmit={handleSaveNote} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
             <input
@@ -176,14 +179,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               value={noteDraft}
               onChange={(e) => setNoteDraft(e.target.value)}
               placeholder="Scrivi un pensiero o motto per il viaggio..."
-              className="flex-1 min-h-[44px] rounded-xl border border-[#E6DDD1] bg-[#FAF6F0] px-3.5 text-base text-[#122638] focus:outline-none focus:border-[#E86A52]"
+              className="flex-1 min-h-[44px] rounded-xl border border-[#E6DDD1] dark:border-[#264561] bg-[#FAF6F0] dark:bg-[#112436] px-3.5 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none focus:border-[#E86A52]"
               autoFocus
             />
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="submit"
                 disabled={savingNote}
-                className="min-h-[44px] px-4 rounded-xl bg-[#122638] text-xs font-semibold text-white hover:bg-[#1C3952]"
+                className="min-h-[44px] px-4 rounded-xl bg-[#122638] dark:bg-[#E86A52] text-xs font-semibold text-white hover:bg-[#1C3952] dark:hover:bg-[#D1533C]"
               >
                 {savingNote ? 'Salvo...' : 'Salva'}
               </button>
@@ -193,7 +196,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   setEditingNote(false);
                   setNoteDraft(vault.loveNote);
                 }}
-                className="min-h-[44px] px-3 rounded-xl text-xs font-semibold text-[#5B6B79] hover:bg-[#F2ECE3]"
+                className="min-h-[44px] px-3 rounded-xl text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952]"
               >
                 Annulla
               </button>
@@ -201,7 +204,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </form>
         ) : (
           <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-[#5B6B79] italic leading-relaxed">
+            <p className="text-sm text-[#5B6B79] dark:text-[#9DB0C0] italic leading-relaxed">
               “{vault.loveNote || 'Zero risparmi o stipendio: ogni piccola entrata extra ci porta in Africa.'}”
             </p>
             <button
@@ -211,7 +214,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 setEditingNote(true);
               }}
               aria-label="Modifica bigliettino"
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-[#5B6B79] hover:text-[#122638] hover:bg-[#F2ECE3] transition-colors shrink-0"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0] hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952] transition-colors shrink-0"
             >
               <Pencil className="w-4 h-4" />
             </button>
@@ -222,50 +225,50 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       {/* Duo Contributions & Smaller Milestones */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Duo Contribution Card */}
-        <section className="lg:col-span-5 rounded-[24px] bg-white border border-[#E6DDD1] p-6 space-y-5">
+        <section className="lg:col-span-5 rounded-[24px] bg-white dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] p-6 space-y-5 transition-colors">
           <div className="flex items-baseline justify-between gap-4">
-            <h2 className="font-display text-xl font-semibold text-[#122638]">
+            <h2 className="font-display text-xl font-semibold text-[#122638] dark:text-[#FAF6F0]">
               Contributo di coppia
             </h2>
-            <span className="text-xs text-[#5B6B79] tabular-nums">
+            <span className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] tabular-nums">
               {contributions.length} {contributions.length === 1 ? 'entrata' : 'entrate'}
             </span>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-2xl bg-[#FAF6F0] p-4 space-y-2.5">
+            <div className="rounded-2xl bg-[#FAF6F0] dark:bg-[#112436] p-4 space-y-2.5">
               <div className="flex items-center gap-2.5">
                 <span className="w-8 h-8 rounded-full bg-[#E86A52] text-white text-xs font-bold flex items-center justify-center shrink-0">
                   {initialA}
                 </span>
-                <span className="text-sm font-semibold text-[#122638] truncate">
+                <span className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0] truncate">
                   {vault.partnerAName}
                 </span>
               </div>
               <div>
-                <p className="font-display text-2xl font-semibold tabular-nums text-[#122638]">
+                <p className="font-display text-2xl font-semibold tabular-nums text-[#122638] dark:text-[#FAF6F0]">
                   {formatEuro(partnerATotal)}
                 </p>
-                <p className="text-xs text-[#5B6B79] tabular-nums mt-0.5">
+                <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] tabular-nums mt-0.5">
                   {shareA}% del totale · {partnerACount} extra
                 </p>
               </div>
             </div>
 
-            <div className="rounded-2xl bg-[#FAF6F0] p-4 space-y-2.5">
+            <div className="rounded-2xl bg-[#FAF6F0] dark:bg-[#112436] p-4 space-y-2.5">
               <div className="flex items-center gap-2.5">
                 <span className="w-8 h-8 rounded-full bg-[#1A6B8A] text-white text-xs font-bold flex items-center justify-center shrink-0">
                   {initialB}
                 </span>
-                <span className="text-sm font-semibold text-[#122638] truncate">
+                <span className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0] truncate">
                   {vault.partnerBName}
                 </span>
               </div>
               <div>
-                <p className="font-display text-2xl font-semibold tabular-nums text-[#122638]">
+                <p className="font-display text-2xl font-semibold tabular-nums text-[#122638] dark:text-[#FAF6F0]">
                   {formatEuro(partnerBTotal)}
                 </p>
-                <p className="text-xs text-[#5B6B79] tabular-nums mt-0.5">
+                <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] tabular-nums mt-0.5">
                   {shareB}% del totale · {partnerBCount} extra
                 </p>
               </div>
@@ -273,107 +276,163 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <div className="h-2.5 w-full rounded-full bg-[#F2ECE3] overflow-hidden flex gap-0.5">
+            <div className="h-2.5 w-full rounded-full bg-[#F2ECE3] dark:bg-[#1E3952] overflow-hidden flex gap-0.5">
               <div
                 className="h-full bg-[#E86A52] rounded-l-full transition-all duration-500"
                 style={{ width: `${shareA}%` }}
               />
               <div
-                className="h-full bg-[#1A6B8A] rounded-r-full transition-all duration-500"
+                className="h-full bg-[#1A6B8A] dark:bg-[#2D8FB3] rounded-r-full transition-all duration-500"
                 style={{ width: `${shareB}%` }}
               />
             </div>
           </div>
         </section>
 
-        {/* Smaller Step Milestones (5% -> 100%) */}
-        <section className="lg:col-span-7 rounded-[24px] bg-white border border-[#E6DDD1] p-6 space-y-4">
-          <div className="flex items-baseline justify-between gap-4">
-            <h2 className="font-display text-xl font-semibold text-[#122638]">
-              Piccoli traguardi verso l’Africa
-            </h2>
-            <span className="text-xs text-[#5B6B79] tabular-nums">
-              {unlockedCount} / {MILESTONES.length} tappe
-            </span>
-          </div>
-
-          {nextMilestone && (
-            <div className="rounded-2xl bg-[#F2ECE3] px-4 py-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-[#1A6B8A]">Prossimo passo</p>
-                <p className="text-sm font-semibold text-[#122638] truncate">
-                  {nextMilestone.label}
-                </p>
-              </div>
-              <span className="text-xs font-semibold tabular-nums text-[#122638] shrink-0">
-                Mancano {formatEuro(Math.max(0, (target * nextMilestone.percent) / 100 - totalSaved))}
-              </span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {MILESTONES.map((milestone) => {
-              const unlocked = percentage >= milestone.percent;
-              const isNext = nextMilestone?.percent === milestone.percent;
-              const euroThreshold = (target * milestone.percent) / 100;
-              return (
-                <div
-                  key={milestone.percent}
-                  className={`flex items-center justify-between gap-3 rounded-2xl px-3.5 py-2.5 border transition-colors ${
-                    unlocked
-                      ? 'bg-[#E09F3E]/12 border-[#E09F3E]/35'
-                      : isNext
-                        ? 'bg-white border-[#1A6B8A]/45'
-                        : 'bg-[#FAF6F0] border-transparent'
-                  }`}
+        {/* Smaller Step Milestones Accordion (5% -> 100%) */}
+        <section className="lg:col-span-7 rounded-[24px] bg-white dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] overflow-hidden transition-colors">
+          <button
+            type="button"
+            onClick={() => setMilestonesExpanded((prev) => !prev)}
+            aria-expanded={milestonesExpanded}
+            aria-controls="milestones-accordion-panel"
+            className="w-full text-left p-6 space-y-4 hover:bg-[#FAF6F0]/60 dark:hover:bg-[#1E3952]/50 active:bg-[#F2ECE3]/60 dark:active:bg-[#1E3952] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A]/50"
+          >
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="font-display text-xl font-semibold text-[#122638] dark:text-[#FAF6F0]">
+                Traguardi
+              </h2>
+              <div className="flex items-center gap-2.5 shrink-0">
+                <span className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] tabular-nums">
+                  {unlockedCount} / {MILESTONES.length} tappe
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="w-8 h-8 rounded-full bg-[#F2ECE3] dark:bg-[#1E3952] text-[#122638] dark:text-[#FAF6F0] flex items-center justify-center"
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span
-                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                        unlocked
-                          ? 'bg-[#E09F3E] text-white'
-                          : isNext
-                            ? 'bg-[#1A6B8A]/15 text-[#1A6B8A]'
-                            : 'bg-[#E6DDD1] text-[#5B6B79]'
-                      }`}
-                    >
-                      {unlocked ? <Check className="w-3.5 h-3.5" /> : <Flag className="w-3 h-3" />}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-[#122638] truncate">
-                        {milestone.label}
-                      </p>
-                      <p className="text-[11px] text-[#5B6B79] truncate">
-                        {milestone.subtitle}
-                      </p>
-                    </div>
-                  </div>
-
-                  <span
-                    className={`text-xs font-semibold tabular-nums shrink-0 ${
-                      unlocked ? 'text-[#9B6B16]' : 'text-[#5B6B79]'
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform duration-200 ${
+                      milestonesExpanded ? 'rotate-180' : ''
                     }`}
-                  >
-                    {formatEuro(euroThreshold)}
-                  </span>
+                  />
+                </span>
+              </div>
+            </div>
+
+            {nextMilestone ? (
+              <div className="rounded-2xl bg-[#F2ECE3] dark:bg-[#1E3952] px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-[#1A6B8A] dark:text-[#2D8FB3]">
+                    Prossimo traguardo
+                  </p>
+                  <p className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0] truncate">
+                    {nextMilestone.label}
+                  </p>
                 </div>
-              );
-            })}
-          </div>
+                <span className="text-xs font-semibold tabular-nums text-[#122638] dark:text-[#FAF6F0] shrink-0">
+                  Mancano {formatEuro(Math.max(0, (target * nextMilestone.percent) / 100 - totalSaved))}
+                </span>
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-[#E09F3E]/12 dark:bg-[#E09F3E]/15 border border-[#E09F3E]/35 px-4 py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-7 h-7 rounded-full bg-[#E09F3E] text-white flex items-center justify-center shrink-0">
+                    <Check className="w-3.5 h-3.5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[#9B6B16] dark:text-[#F7C76E]">
+                      Tutti i traguardi raggiunti
+                    </p>
+                    <p className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0] truncate">
+                      Obiettivo 100% completato insieme!
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-semibold tabular-nums text-[#9B6B16] dark:text-[#F7C76E] shrink-0">
+                  100%
+                </span>
+              </div>
+            )}
+          </button>
+
+          <AnimatePresence initial={false}>
+            {milestonesExpanded && (
+              <motion.div
+                id="milestones-accordion-panel"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="px-6 pb-6 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {MILESTONES.map((milestone) => {
+                    const unlocked = percentage >= milestone.percent;
+                    const isNext = nextMilestone?.percent === milestone.percent;
+                    const euroThreshold = (target * milestone.percent) / 100;
+                    return (
+                      <div
+                        key={milestone.percent}
+                        className={`flex items-center justify-between gap-3 rounded-2xl px-3.5 py-2.5 border transition-colors ${
+                          unlocked
+                            ? 'bg-[#E09F3E]/12 dark:bg-[#E09F3E]/15 border-[#E09F3E]/35'
+                            : isNext
+                              ? 'bg-white dark:bg-[#1E3952] border-[#1A6B8A]/45 dark:border-[#2D8FB3]/55'
+                              : 'bg-[#FAF6F0] dark:bg-[#112436] border-transparent'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                              unlocked
+                                ? 'bg-[#E09F3E] text-white'
+                                : isNext
+                                  ? 'bg-[#1A6B8A]/15 dark:bg-[#2D8FB3]/20 text-[#1A6B8A] dark:text-[#2D8FB3]'
+                                  : 'bg-[#E6DDD1] dark:bg-[#264561] text-[#5B6B79] dark:text-[#9DB0C0]'
+                            }`}
+                          >
+                            {unlocked ? <Check className="w-3.5 h-3.5" /> : <Flag className="w-3 h-3" />}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-[#122638] dark:text-[#FAF6F0] truncate">
+                              {milestone.label}
+                            </p>
+                            <p className="text-[11px] text-[#5B6B79] dark:text-[#9DB0C0] truncate">
+                              {milestone.subtitle}
+                            </p>
+                          </div>
+                        </div>
+
+                        <span
+                          className={`text-xs font-semibold tabular-nums shrink-0 ${
+                            unlocked
+                              ? 'text-[#9B6B16] dark:text-[#F7C76E]'
+                              : 'text-[#5B6B79] dark:text-[#9DB0C0]'
+                          }`}
+                        >
+                          {formatEuro(euroThreshold)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </section>
       </div>
 
       {/* Fintech Ledger Recent Entries */}
-      <section className="rounded-[24px] bg-white border border-[#E6DDD1] p-6 space-y-4">
+      <section className="rounded-[24px] bg-white dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] p-6 space-y-4 transition-colors">
         <div className="flex items-center justify-between gap-4">
-          <h2 className="font-display text-xl font-semibold text-[#122638]">
+          <h2 className="font-display text-xl font-semibold text-[#122638] dark:text-[#FAF6F0]">
             Ultime entrate extra
           </h2>
           {contributions.length > 0 && (
             <button
               type="button"
               onClick={onNavigateFeed}
-              className="min-h-[44px] px-3 rounded-xl text-xs font-semibold text-[#1A6B8A] hover:bg-[#F2ECE3] transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
+              className="min-h-[44px] px-3 rounded-xl text-xs font-semibold text-[#1A6B8A] dark:text-[#2D8FB3] hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952] transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
             >
               Vedi tutte
               <ArrowRight className="w-3.5 h-3.5" />
@@ -382,17 +441,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         </div>
 
         {recentEntries.length === 0 ? (
-          <div className="rounded-2xl bg-[#FAF6F0] p-6 text-center space-y-2">
-            <p className="text-sm font-medium text-[#122638]">
+          <div className="rounded-2xl bg-[#FAF6F0] dark:bg-[#112436] p-6 text-center space-y-2">
+            <p className="text-sm font-medium text-[#122638] dark:text-[#FAF6F0]">
               SALVAFRICA è pronto per la prima entrata extra
             </p>
-            <p className="text-xs text-[#5B6B79]">
+            <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0]">
               Vendite dell’usato, lavoretti, cashback, scommesse o monetine trovate: registrate
               qui solo guadagni ed entrate esterne.
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-[#E6DDD1]">
+          <div className="divide-y divide-[#E6DDD1] dark:divide-[#264561]">
             {recentEntries.map((entry) => (
               <div
                 key={entry.id}
@@ -402,19 +461,21 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   <span
                     className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
                       entry.partnerKey === 'A'
-                        ? 'bg-[#E86A52]/12 text-[#D1533C]'
-                        : 'bg-[#1A6B8A]/12 text-[#1A6B8A]'
+                        ? 'bg-[#E86A52]/12 dark:bg-[#E86A52]/20 text-[#D1533C] dark:text-[#E86A52]'
+                        : 'bg-[#1A6B8A]/12 dark:bg-[#2D8FB3]/20 text-[#1A6B8A] dark:text-[#2D8FB3]'
                     }`}
                   >
                     {getSourceIcon(entry.sourceTag)}
                   </span>
 
                   <div className="min-w-0 space-y-0.5">
-                    <p className="text-sm font-semibold text-[#122638] truncate">
+                    <p className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0] truncate">
                       {entry.note || entry.sourceTag}
                     </p>
-                    <div className="flex items-center gap-1.5 text-xs text-[#5B6B79] truncate">
-                      <span className="font-medium text-[#122638]">{entry.partnerName}</span>
+                    <div className="flex items-center gap-1.5 text-xs text-[#5B6B79] dark:text-[#9DB0C0] truncate">
+                      <span className="font-medium text-[#122638] dark:text-[#FAF6F0]">
+                        {entry.partnerName}
+                      </span>
                       <span aria-hidden="true">·</span>
                       <span className="truncate">{entry.sourceTag}</span>
                       <span aria-hidden="true" className="hidden sm:inline">
@@ -427,7 +488,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   </div>
                 </div>
 
-                <span className="font-display text-lg font-semibold tabular-nums text-[#122638] shrink-0">
+                <span className="font-display text-lg font-semibold tabular-nums text-[#122638] dark:text-[#FAF6F0] shrink-0">
                   +{formatEuro(entry.amount)}
                 </span>
               </div>
