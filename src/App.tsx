@@ -9,8 +9,8 @@ import {
 import confetti from 'canvas-confetti';
 import {
   ListChecks,
-  PiggyBank,
   Plus,
+  Route,
   Settings,
   Sparkles,
 } from 'lucide-react';
@@ -318,7 +318,7 @@ export default function App() {
               activeTab === 'home' ? 'text-[#E86A52]' : 'text-[#5B6B79] dark:text-[#9DB0C0]'
             }`}
           >
-            <PiggyBank
+            <Route
               className={`w-[22px] h-[22px] ${
                 activeTab === 'home' ? 'stroke-[2.25]' : 'stroke-[1.75]'
               }`}
@@ -328,7 +328,7 @@ export default function App() {
                 activeTab === 'home' ? 'font-semibold' : 'font-medium'
               }`}
             >
-              Salvadanaio
+              Percorso
             </span>
           </button>
 
