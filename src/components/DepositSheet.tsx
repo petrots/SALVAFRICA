@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, Loader2, Plus, X } from 'lucide-react';
+import { Check, ChevronDown, Loader2, PiggyBank, Plus, X } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { addContribution, createCategory } from '../services/vaultService';
 import {
@@ -25,6 +25,7 @@ export interface DepositSuccessMeta {
   partnerName: string;
   categoryName: string;
   note: string;
+  pendingPhysical: boolean;
 }
 
 interface DepositSheetProps {
@@ -35,6 +36,7 @@ interface DepositSheetProps {
   activeCategories: Category[];
   categoriesLoaded: boolean;
   currentPartnerKey: PartnerKey;
+  defaultPendingPhysical?: boolean;
   onChangePartnerKey: (key: PartnerKey) => void;
   onDepositStart?: () => void;
   onSuccessDeposit: (addedAmount: number, meta: DepositSuccessMeta) => boolean | void;
@@ -74,6 +76,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
   activeCategories,
   categoriesLoaded,
   currentPartnerKey,
+  defaultPendingPhysical = false,
   onChangePartnerKey,
   onDepositStart,
   onSuccessDeposit,
@@ -94,10 +97,12 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
   const [creatingCategoryLoading, setCreatingCategoryLoading] = useState(false);
   const [categoryError, setCategoryError] = useState('');
   const [note, setNote] = useState('');
+  const [pendingPhysical, setPendingPhysical] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmedDeposit, setConfirmedDeposit] = useState<{
     amount: number;
     categoryName: string;
+    pendingPhysical: boolean;
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -132,6 +137,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
     setCategoryError('');
     setSelectedCategoryId(activeCategories[0]?.id ?? '');
     setNote('');
+    setPendingPhysical(Boolean(defaultPendingPhysical));
     setKeyboardOpen(false);
     setPartnerKey(currentPartnerKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -333,6 +339,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
         sourceTag: selectedCategory.name,
         categoryId: selectedCategory.id,
         note,
+        pendingPhysical,
       });
       const reachedMilestone = onSuccessDeposit(parsedAmount, {
         contributionId,
@@ -340,6 +347,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
         partnerName,
         categoryName: selectedCategory.name,
         note: note.trim(),
+        pendingPhysical,
       });
       if (!reachedMilestone) {
         triggerHaptic('success');
@@ -347,6 +355,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
       setConfirmedDeposit({
         amount: parsedAmount,
         categoryName: selectedCategory.name,
+        pendingPhysical,
       });
       closeTimerRef.current = window.setTimeout(() => {
         onClose();
@@ -472,6 +481,12 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                     </span>{' '}
                     · {confirmedDeposit.categoryName}
                   </p>
+                  {confirmedDeposit.pendingPhysical && (
+                    <p className="inline-flex items-center justify-center gap-1.5 pt-1 text-xs font-semibold text-[#85580D] dark:text-[#F7C76E]">
+                      <PiggyBank className="w-3.5 h-3.5 shrink-0" />
+                      <span>Promemoria salvadanaio fisico attivo</span>
+                    </p>
+                  )}
                 </div>
               </motion.div>
             ) : (
@@ -729,7 +744,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                   </div>
 
                   {/* 4. Optional Note */}
-                  <div className="pt-4 border-t ds-divider pb-1">
+                  <div className="pt-4 border-t ds-divider">
                     <label
                       htmlFor="deposit-note-input"
                       className="ds-label mb-1"
@@ -748,6 +763,54 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                       placeholder="Es. Serata ristorante · Per l’Africa"
                       className="ds-input-underline scroll-mb-6"
                     />
+                  </div>
+
+                  {/* 5. Physical Piggy Bank Reminder Toggle */}
+                  <div className="pt-4 border-t ds-divider pb-1">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={pendingPhysical}
+                      onClick={() => {
+                        dismissKeyboard();
+                        triggerHaptic('selection');
+                        setPendingPhysical((prev) => !prev);
+                      }}
+                      className="w-full min-h-[48px] flex items-center justify-between gap-3 text-left rounded-xl py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A]"
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <PiggyBank
+                          className={`w-4 h-4 shrink-0 mt-0.5 transition-colors duration-150 ${
+                            pendingPhysical
+                              ? 'text-[#85580D] dark:text-[#F7C76E]'
+                              : 'text-[#5B6B79] dark:text-[#9DB0C0]'
+                          }`}
+                        />
+                        <div className="min-w-0 space-y-0.5">
+                          <span className="block text-sm font-semibold text-[#122638] dark:text-[#FAF6F0]">
+                            Da inserire nel salvadanaio fisico
+                          </span>
+                          <span className="block ds-caption leading-snug">
+                            Contabilizzato subito nell’app, con promemoria finché non lo metti nel salvadanaio a casa
+                          </span>
+                        </div>
+                      </div>
+
+                      <span
+                        aria-hidden="true"
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 ${
+                          pendingPhysical
+                            ? 'bg-[#E09F3E] border-[#C9892B]'
+                            : 'bg-[#E6DDD1] dark:bg-[#162D42] border-[#D8CEC0] dark:border-[#264561]'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform duration-150 ${
+                            pendingPhysical ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </span>
+                    </button>
                   </div>
                 </div>
 

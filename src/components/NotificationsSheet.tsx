@@ -262,7 +262,16 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
                           ? 'Apri l’app nella sua finestra per attivare le Push di sistema.'
                           : 'Ricevi avvisi Push sul telefono anche ad app chiusa.'}
                       </span>
-                      {envStatus.supported && !envStatus.isInIframe && (
+                      {envStatus.isInIframe ? (
+                        <a
+                          href={window.location.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ds-btn-primary"
+                        >
+                          Apri scheda
+                        </a>
+                      ) : envStatus.supported ? (
                         <button
                           type="button"
                           onClick={() => void handleEnablePush()}
@@ -271,7 +280,7 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
                         >
                           {enablingPush ? 'Attivazione...' : 'Attiva Push'}
                         </button>
-                      )}
+                      ) : null}
                     </>
                   )}
                 </div>

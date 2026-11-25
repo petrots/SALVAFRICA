@@ -1,6 +1,7 @@
 import {
   deleteDoc,
   doc,
+  getDoc,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -21,6 +22,7 @@ import {
 const PARTNER_STORAGE_KEY = 'salvafrica_partner_key';
 const NOTIF_PREFS_STORAGE_KEY = 'salvafrica_notif_prefs';
 const PUSH_SUB_ID_STORAGE_KEY = 'salvafrica_push_sub_id';
+const PUSH_OPT_OUT_STORAGE_KEY = 'salvafrica_push_opt_out';
 
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPreferences = {
   notifyDeposits: true,
@@ -96,6 +98,26 @@ export function getDeviceSubscriptionId(): string {
     return created;
   } catch {
     return makeId('sub');
+  }
+}
+
+export function isPushOptedOut(): boolean {
+  try {
+    return window.localStorage.getItem(PUSH_OPT_OUT_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setPushOptedOut(optedOut: boolean): void {
+  try {
+    if (optedOut) {
+      window.localStorage.setItem(PUSH_OPT_OUT_STORAGE_KEY, '1');
+    } else {
+      window.localStorage.removeItem(PUSH_OPT_OUT_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage restrictions
   }
 }
 
@@ -183,7 +205,7 @@ export interface VapidConfigResponse {
 
 export async function fetchVapidConfig(): Promise<VapidConfigResponse | null> {
   try {
-    const res = await fetch('/api/push/config');
+    const res = await fetch('/api/push/config', { cache: 'no-store' });
     if (!res.ok) return null;
     const data = (await res.json()) as Partial<VapidConfigResponse>;
     if (typeof data.publicKey !== 'string' || !data.publicKey) return null;
@@ -197,7 +219,7 @@ export async function fetchVapidConfig(): Promise<VapidConfigResponse | null> {
 }
 
 async function waitForServiceWorkerReady(
-  timeoutMs = 8000
+  timeoutMs = 12000
 ): Promise<ServiceWorkerRegistration> {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
     throw new Error('Service Worker non supportato su questo dispositivo.');
@@ -205,16 +227,28 @@ async function waitForServiceWorkerReady(
 
   const existing = await navigator.serviceWorker.getRegistration();
   if (!existing) {
+    const primaryUrl = import.meta.env.DEV ? '/dev-sw.js?dev-sw' : '/sw.js';
+    const primaryOptions: RegistrationOptions = import.meta.env.DEV
+      ? { scope: '/', type: 'module' }
+      : { scope: '/' };
     try {
-      await navigator.serviceWorker.register('/sw.js');
-    } catch {
-      // Ignore if dev mode uses dev-sw.js
+      await navigator.serviceWorker.register(primaryUrl, primaryOptions);
+    } catch (primaryErr) {
+      const fallbackUrl = import.meta.env.DEV ? '/sw.js' : '/dev-sw.js?dev-sw';
+      const fallbackOptions: RegistrationOptions = import.meta.env.DEV
+        ? { scope: '/' }
+        : { scope: '/', type: 'module' };
+      try {
+        await navigator.serviceWorker.register(fallbackUrl, fallbackOptions);
+      } catch {
+        throw primaryErr;
+      }
     }
   }
 
   let timerId: number | undefined;
   try {
-    return await Promise.race([
+    const registration = await Promise.race([
       navigator.serviceWorker.ready,
       new Promise<never>((_resolve, reject) => {
         timerId = window.setTimeout(
@@ -223,6 +257,10 @@ async function waitForServiceWorkerReady(
         );
       }),
     ]);
+    if (!registration || !('pushManager' in registration)) {
+      throw new Error('PushManager non disponibile nella registrazione Service Worker.');
+    }
+    return registration;
   } finally {
     if (timerId !== undefined) {
       window.clearTimeout(timerId);
@@ -285,6 +323,46 @@ export async function getActiveBrowserPushSubscription(): Promise<PushSubscripti
   }
 }
 
+async function persistSubscriptionToFirestore(
+  vaultId: string,
+  subId: string,
+  partnerKey: PartnerKey,
+  prefs: NotificationPreferences,
+  endpoint: string,
+  p256dh: string,
+  auth: string
+): Promise<void> {
+  const path = `vaults/${vaultId}/pushSubscriptions/${subId}`;
+  const subDocRef = doc(db, 'vaults', vaultId, 'pushSubscriptions', subId);
+  const commonFields = {
+    partnerKey,
+    endpoint: endpoint.slice(0, 1000),
+    p256dh: p256dh.slice(0, 256),
+    auth: auth.slice(0, 128),
+    deviceLabel: clampString(getDeviceLabel(), APP_LIMITS.deviceLabelMax),
+    notifyDeposits: prefs.notifyDeposits,
+    notifyReactions: prefs.notifyReactions,
+    notifyMilestones: prefs.notifyMilestones,
+    notifyLoveNote: prefs.notifyLoveNote,
+    updatedAt: serverTimestamp(),
+  };
+
+  try {
+    const existingSnap = await getDoc(subDocRef);
+    if (existingSnap.exists()) {
+      await updateDoc(subDocRef, commonFields);
+    } else {
+      await setDoc(subDocRef, {
+        id: subId,
+        ...commonFields,
+        createdAt: serverTimestamp(),
+      });
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+
 export async function subscribeDeviceToPush(
   vaultId: string,
   partnerKey: PartnerKey,
@@ -335,7 +413,7 @@ export async function subscribeDeviceToPush(
   }
 
   try {
-    const registration = await waitForServiceWorkerReady(8000);
+    const registration = await waitForServiceWorkerReady(12000);
     let subscription = await registration.pushManager.getSubscription();
 
     const expectedKey = urlBase64ToUint8Array(vapidConfig.publicKey);
@@ -344,7 +422,7 @@ export async function subscribeDeviceToPush(
         subscription.options.applicationServerKey
       );
       if (existingKeyB64 && existingKeyB64 !== vapidConfig.publicKey) {
-        await subscription.unsubscribe();
+        await subscription.unsubscribe().catch(() => {});
         subscription = null;
       }
     }
@@ -366,32 +444,114 @@ export async function subscribeDeviceToPush(
     }
 
     const subId = getDeviceSubscriptionId();
-    const path = `vaults/${vaultId}/pushSubscriptions/${subId}`;
-    await setDoc(doc(db, 'vaults', vaultId, 'pushSubscriptions', subId), {
-      id: subId,
+    await persistSubscriptionToFirestore(
+      vaultId,
+      subId,
       partnerKey,
-      endpoint: subscription.endpoint.slice(0, 1000),
-      p256dh: p256dh.slice(0, 256),
-      auth: auth.slice(0, 128),
-      deviceLabel: clampString(getDeviceLabel(), APP_LIMITS.deviceLabelMax),
-      notifyDeposits: prefs.notifyDeposits,
-      notifyReactions: prefs.notifyReactions,
-      notifyMilestones: prefs.notifyMilestones,
-      notifyLoveNote: prefs.notifyLoveNote,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    }).catch((err) => {
-      handleFirestoreError(err, OperationType.WRITE, path);
-    });
+      prefs,
+      subscription.endpoint,
+      p256dh,
+      auth
+    );
 
+    setPushOptedOut(false);
     return { ok: true, persistentVapid: vapidConfig.persistent };
-  } catch {
+  } catch (err) {
+    console.error('[push/subscribe] Failed:', err);
+    const message = err instanceof Error ? err.message : '';
+    if (/Service Worker|timeout|PushManager/i.test(message)) {
+      return {
+        ok: false,
+        error: 'Service Worker non ancora pronto: ricarica SALVAFRICA e riprova.',
+      };
+    }
+    if (/operationType/i.test(message)) {
+      return {
+        ok: false,
+        error: 'Impossibile salvare la registrazione notifiche nel database.',
+      };
+    }
     return {
       ok: false,
       error:
         'Attivazione Push non riuscita. Assicurati di aprire l’app direttamente (fuori dall’anteprima) o dalla schermata Home.',
     };
   }
+}
+
+export async function ensurePushSubscriptionSynced(
+  vaultId: string,
+  partnerKey: PartnerKey,
+  prefs: NotificationPreferences,
+  existingSubscriptions: PushSubscriptionRecord[]
+): Promise<{ subscribed: boolean; persistentVapid: boolean | null }> {
+  const env = getPushEnvironmentStatus();
+  const [sub, vapidConfig] = await Promise.all([
+    getActiveBrowserPushSubscription(),
+    fetchVapidConfig(),
+  ]);
+  const persistentVapid = vapidConfig ? vapidConfig.persistent : null;
+
+  if (!env.supported || env.permission !== 'granted' || isPushOptedOut()) {
+    return { subscribed: false, persistentVapid };
+  }
+
+  const subId = getDeviceSubscriptionId();
+
+  // Check if local subscription matches server's active VAPID public key
+  let keyMismatch = false;
+  if (sub && vapidConfig) {
+    if (sub.options?.applicationServerKey) {
+      const existingKeyB64 = arrayBufferToBase64Url(sub.options.applicationServerKey);
+      if (existingKeyB64 && existingKeyB64 !== vapidConfig.publicKey) {
+        keyMismatch = true;
+      }
+    }
+  }
+
+  if (!sub || keyMismatch) {
+    const res = await subscribeDeviceToPush(vaultId, partnerKey, prefs);
+    return {
+      subscribed: res.ok,
+      persistentVapid: res.persistentVapid ?? persistentVapid,
+    };
+  }
+
+  // Browser has a valid subscription matching server VAPID key: ensure Firestore matches
+  const p256dh = arrayBufferToBase64Url(sub.getKey('p256dh'));
+  const auth = arrayBufferToBase64Url(sub.getKey('auth'));
+  const stored = existingSubscriptions.find((s) => s.id === subId);
+
+  if (
+    sub.endpoint &&
+    p256dh &&
+    auth &&
+    (!stored ||
+      stored.endpoint !== sub.endpoint.slice(0, 1000) ||
+      stored.p256dh !== p256dh.slice(0, 256) ||
+      stored.auth !== auth.slice(0, 128) ||
+      stored.partnerKey !== partnerKey ||
+      stored.notifyDeposits !== prefs.notifyDeposits ||
+      stored.notifyReactions !== prefs.notifyReactions ||
+      stored.notifyMilestones !== prefs.notifyMilestones ||
+      stored.notifyLoveNote !== prefs.notifyLoveNote)
+  ) {
+    try {
+      await persistSubscriptionToFirestore(
+        vaultId,
+        subId,
+        partnerKey,
+        prefs,
+        sub.endpoint,
+        p256dh,
+        auth
+      );
+    } catch {
+      // Non-blocking sync retry on next focus
+    }
+  }
+
+  return { subscribed: true, persistentVapid };
 }
 
 export async function syncSubscriptionPreferences(
@@ -421,6 +581,7 @@ export async function syncSubscriptionPreferences(
 }
 
 export async function unsubscribeDeviceFromPush(vaultId: string): Promise<void> {
+  setPushOptedOut(true);
   try {
     const activeSub = await getActiveBrowserPushSubscription();
     if (activeSub) {
@@ -439,88 +600,127 @@ export async function unsubscribeDeviceFromPush(vaultId: string): Promise<void> 
   }
 }
 
-export async function sendTestPush(
-  vaultId: string,
-  partnerName: string
-): Promise<{ ok: boolean; message: string }> {
-  const activeSub = await getActiveBrowserPushSubscription();
-  if (!activeSub) {
-    return {
-      ok: false,
-      message: 'Attiva prima le notifiche Push su questo dispositivo.',
-    };
+async function postTestPushRequest(
+  partnerName: string,
+  subscription: PushSubscription
+): Promise<{
+  ok: boolean;
+  expired?: boolean;
+  vapidMismatch?: boolean;
+  error?: string;
+}> {
+  const p256dh = arrayBufferToBase64Url(subscription.getKey('p256dh'));
+  const auth = arrayBufferToBase64Url(subscription.getKey('auth'));
+  if (!subscription.endpoint || !p256dh || !auth) {
+    return { ok: false, error: 'Sottoscrizione locale incompleta.' };
   }
 
-  const p256dh = arrayBufferToBase64Url(activeSub.getKey('p256dh'));
-  const auth = arrayBufferToBase64Url(activeSub.getKey('auth'));
-  if (!activeSub.endpoint || !p256dh || !auth) {
-    return { ok: false, message: 'Sottoscrizione locale incompleta.' };
+  const res = await fetch('/api/push/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      partnerName,
+      subscription: {
+        endpoint: subscription.endpoint,
+        p256dh,
+        auth,
+      },
+    }),
+  });
+
+  if (res.ok) {
+    return { ok: true };
+  }
+
+  const errJson = (await res.json().catch(() => ({}))) as {
+    expired?: boolean;
+    vapidMismatch?: boolean;
+    error?: string;
+  };
+  return {
+    ok: false,
+    expired: errJson.expired,
+    vapidMismatch: errJson.vapidMismatch,
+    error: errJson.error || 'Invio notifica Push dal server non riuscito.',
+  };
+}
+
+export async function sendTestPush(
+  vaultId: string,
+  partnerName: string,
+  partnerKey: PartnerKey,
+  prefs: NotificationPreferences
+): Promise<{ ok: boolean; message: string; recovered?: boolean }> {
+  let activeSub = await getActiveBrowserPushSubscription();
+  if (!activeSub) {
+    const resub = await subscribeDeviceToPush(vaultId, partnerKey, prefs);
+    if (!resub.ok) {
+      return {
+        ok: false,
+        message: resub.error || 'Attiva prima le notifiche Push su questo dispositivo.',
+      };
+    }
+    activeSub = await getActiveBrowserPushSubscription();
+    if (!activeSub) {
+      return {
+        ok: false,
+        message: 'Attiva prima le notifiche Push su questo dispositivo.',
+      };
+    }
   }
 
   try {
-    const res = await fetch('/api/push/test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        partnerName,
-        subscription: {
-          endpoint: activeSub.endpoint,
-          p256dh,
-          auth,
-        },
-      }),
-    });
-
-    if (res.ok) {
+    const firstAttempt = await postTestPushRequest(partnerName, activeSub);
+    if (firstAttempt.ok) {
       return {
         ok: true,
         message: 'Notifica di prova inviata! Dovresti vederla tra un istante.',
       };
     }
 
-    const errJson = (await res.json().catch(() => ({}))) as {
-      expired?: boolean;
-      error?: string;
-    };
-    if (errJson.expired) {
-      await unsubscribeDeviceFromPush(vaultId);
+    if (firstAttempt.expired || firstAttempt.vapidMismatch) {
+      // Stale/mismatched VAPID subscription: renew automatically and retry once
+      await activeSub.unsubscribe().catch(() => {});
+      const renewed = await subscribeDeviceToPush(vaultId, partnerKey, prefs);
+      if (renewed.ok) {
+        const freshSub = await getActiveBrowserPushSubscription();
+        if (freshSub) {
+          const retryAttempt = await postTestPushRequest(partnerName, freshSub);
+          if (retryAttempt.ok) {
+            return {
+              ok: true,
+              recovered: true,
+              message:
+                'Sottoscrizione aggiornata e notifica di prova inviata! Dovresti vederla tra un istante.',
+            };
+          }
+          return {
+            ok: false,
+            message:
+              retryAttempt.error ||
+              'Invio notifica Push non riuscito dopo il rinnovo.',
+          };
+        }
+      }
       return {
         ok: false,
-        message: 'Sottoscrizione scaduta: riattiva le notifiche Push.',
+        message:
+          renewed.error ||
+          firstAttempt.error ||
+          'Sottoscrizione scaduta: disattiva e riattiva le notifiche Push.',
       };
     }
+
+    return {
+      ok: false,
+      message: firstAttempt.error || 'Invio notifica Push non riuscito.',
+    };
   } catch {
-    // Fall back to direct Service Worker local notification if server unreachable
+    return {
+      ok: false,
+      message: 'Server Push non raggiungibile: controlla la connessione e riprova.',
+    };
   }
-
-  if (
-    typeof navigator !== 'undefined' &&
-    'serviceWorker' in navigator &&
-    typeof window !== 'undefined' &&
-    'Notification' in window &&
-    window.Notification.permission === 'granted'
-  ) {
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification('SALVAFRICA · Notifiche attive', {
-        body: `Ciao ${partnerName}! Le notifiche locali di sistema funzionano su questo dispositivo.`,
-        icon: '/pwa-192x192.png',
-        badge: '/pwa-192x192.png',
-        tag: 'salvafrica-test-local',
-      });
-      return {
-        ok: true,
-        message: 'Notifica locale di sistema inviata su questo dispositivo.',
-      };
-    } catch {
-      // Ignore
-    }
-  }
-
-  return {
-    ok: false,
-    message: 'Invio notifica di prova non riuscito su questo dispositivo.',
-  };
 }
 
 function shouldPushToSubscription(
@@ -605,18 +805,25 @@ export async function dispatchActivityNotification(
     return null;
   }
 
-  // Trigger Web Push in background for eligible partner devices
+  // Trigger Web Push in background for eligible partner devices (deduplicated by endpoint)
   const currentSubId = getDeviceSubscriptionId();
-  const targetSubs = pushSubscriptions.filter(
-    (sub) =>
-      sub.id !== currentSubId &&
-      shouldPushToSubscription(
+  const seenEndpoints = new Set<string>();
+  const targetSubs = pushSubscriptions.filter((sub) => {
+    if (
+      sub.id === currentSubId ||
+      !shouldPushToSubscription(
         sub,
         input.type,
         input.actorKey,
         input.targetPartnerKey
       )
-  );
+    ) {
+      return false;
+    }
+    if (seenEndpoints.has(sub.endpoint)) return false;
+    seenEndpoints.add(sub.endpoint);
+    return true;
+  });
 
   if (targetSubs.length > 0) {
     const targetUrl =

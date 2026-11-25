@@ -14,22 +14,81 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3000);
-const isProduction = process.env.NODE_ENV === 'production';
+const isProduction =
+  process.env.NODE_ENV === 'production' ||
+  (process.env.NODE_ENV !== 'development' &&
+    fs.existsSync(path.resolve(__dirname, 'dist', 'index.html')));
 
-// VAPID configuration: read persistent keys from process.env; fall back to in-memory keys in preview/dev
-const envPublicKey = (process.env.VAPID_PUBLIC_KEY || '').trim();
-const envPrivateKey = (process.env.VAPID_PRIVATE_KEY || '').trim();
-const envSubject = (process.env.VAPID_SUBJECT || 'mailto:salvafrica@example.com').trim();
+interface VapidKeyPair {
+  publicKey: string;
+  privateKey: string;
+}
 
-const hasPersistentVapid = Boolean(envPublicKey && envPrivateKey);
-const vapidKeys = hasPersistentVapid
-  ? { publicKey: envPublicKey, privateKey: envPrivateKey }
-  : webpush.generateVAPIDKeys();
+function loadOrCreateVapidKeys(): {
+  keys: VapidKeyPair;
+  persistent: boolean;
+  source: 'env' | 'file' | 'memory';
+} {
+  const envPublicKey = (process.env.VAPID_PUBLIC_KEY || '').trim();
+  const envPrivateKey = (process.env.VAPID_PRIVATE_KEY || '').trim();
+  if (envPublicKey && envPrivateKey) {
+    return {
+      keys: { publicKey: envPublicKey, privateKey: envPrivateKey },
+      persistent: true,
+      source: 'env',
+    };
+  }
 
+  const keyFilePath = path.resolve(__dirname, '.vapid-keys.json');
+  try {
+    if (fs.existsSync(keyFilePath)) {
+      const parsed = JSON.parse(
+        fs.readFileSync(keyFilePath, 'utf8')
+      ) as Partial<VapidKeyPair>;
+      if (
+        typeof parsed.publicKey === 'string' &&
+        parsed.publicKey.length > 20 &&
+        typeof parsed.privateKey === 'string' &&
+        parsed.privateKey.length > 20
+      ) {
+        return {
+          keys: { publicKey: parsed.publicKey, privateKey: parsed.privateKey },
+          persistent: true,
+          source: 'file',
+        };
+      }
+    }
+  } catch {
+    // Fall through to generate a fresh keypair
+  }
+
+  const generated = webpush.generateVAPIDKeys();
+  try {
+    fs.writeFileSync(keyFilePath, JSON.stringify(generated, null, 2), {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
+    return { keys: generated, persistent: true, source: 'file' };
+  } catch {
+    return { keys: generated, persistent: false, source: 'memory' };
+  }
+}
+
+const vapidConfigState = loadOrCreateVapidKeys();
+const vapidKeys = vapidConfigState.keys;
+const hasPersistentVapid = vapidConfigState.persistent;
+
+const rawAppUrl = (process.env.APP_URL || '').trim();
+const fallbackSubject =
+  rawAppUrl.startsWith('https://') && !rawAppUrl.includes('localhost')
+    ? rawAppUrl
+    : 'mailto:noreply@salvafrica.app';
+const envSubject = (process.env.VAPID_SUBJECT || fallbackSubject).trim();
 const vapidSubject =
-  envSubject.startsWith('mailto:') || envSubject.startsWith('https://')
+  (envSubject.startsWith('mailto:') || envSubject.startsWith('https://')) &&
+  !envSubject.includes('example.com')
     ? envSubject
-    : 'mailto:salvafrica@example.com';
+    : fallbackSubject;
 
 webpush.setVapidDetails(vapidSubject, vapidKeys.publicKey, vapidKeys.privateKey);
 
@@ -114,6 +173,31 @@ function clampText(value: unknown, maxLen: number, fallback: string): string {
   return trimmed ? trimmed.slice(0, maxLen) : fallback;
 }
 
+function extractPushErrorInfo(err: unknown): {
+  statusCode: number;
+  body: string;
+  expired: boolean;
+  vapidMismatch: boolean;
+} {
+  const statusCode =
+    typeof err === 'object' && err !== null && 'statusCode' in err
+      ? Number((err as { statusCode?: unknown }).statusCode) || 500
+      : 500;
+  const body =
+    typeof err === 'object' && err !== null && 'body' in err
+      ? String((err as { body?: unknown }).body || '').slice(0, 300)
+      : err instanceof Error
+        ? err.message.slice(0, 300)
+        : '';
+  const expired = statusCode === 404 || statusCode === 410;
+  const vapidMismatch =
+    statusCode === 400 ||
+    statusCode === 401 ||
+    statusCode === 403 ||
+    /vapid|badjwttoken|invalidprovidertoken/i.test(body);
+  return { statusCode, body, expired, vapidMismatch };
+}
+
 interface FirestoreFieldValue {
   stringValue?: string;
   doubleValue?: number;
@@ -171,6 +255,7 @@ async function startServer() {
   app.use(express.json({ limit: '64kb' }));
 
   app.get('/api/push/config', (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
     res.json({
       publicKey: vapidKeys.publicKey,
       persistent: hasPersistentVapid,
@@ -317,11 +402,9 @@ async function startServer() {
           sent += 1;
         } catch (err: unknown) {
           failed += 1;
-          const statusCode =
-            typeof err === 'object' && err !== null && 'statusCode' in err
-              ? Number((err as { statusCode?: unknown }).statusCode)
-              : 0;
-          if ((statusCode === 404 || statusCode === 410) && typeof sub.id === 'string') {
+          const info = extractPushErrorInfo(err);
+          console.error('[push/send] Delivery failed:', info.statusCode, info.body);
+          if ((info.expired || info.vapidMismatch) && typeof sub.id === 'string') {
             expiredIds.push(sub.id);
           }
         }
@@ -356,7 +439,7 @@ async function startServer() {
     const payload = JSON.stringify({
       title: 'SALVAFRICA · Notifiche attive',
       body: `Ciao ${name}! Riceverai qui gli avvisi per nuovi versamenti, reazioni e traguardi.`,
-      tag: 'salvafrica-test-push',
+      tag: `salvafrica-test-${Date.now()}`,
       url: '/?notifications=1',
     });
 
@@ -371,13 +454,17 @@ async function startServer() {
       );
       res.json({ ok: true });
     } catch (err: unknown) {
-      const statusCode =
-        typeof err === 'object' && err !== null && 'statusCode' in err
-          ? Number((err as { statusCode?: unknown }).statusCode)
-          : 500;
-      res.status(statusCode === 404 || statusCode === 410 ? 410 : 502).json({
-        error: 'Invio notifica di prova non riuscito.',
-        expired: statusCode === 404 || statusCode === 410,
+      const info = extractPushErrorInfo(err);
+      console.error('[push/test] Delivery failed:', info.statusCode, info.body);
+      res.status(info.expired ? 410 : 502).json({
+        error: info.vapidMismatch
+          ? 'Chiave VAPID disallineata: rinnovo automatico della sottoscrizione necessario.'
+          : info.expired
+            ? 'Sottoscrizione scaduta: rinnovo automatico necessario.'
+            : `Invio Push rifiutato dal servizio (${info.statusCode}).`,
+        expired: info.expired,
+        vapidMismatch: info.vapidMismatch,
+        statusCode: info.statusCode,
       });
     }
   });

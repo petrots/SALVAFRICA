@@ -288,6 +288,7 @@ export async function addContribution(
     sourceTag: string;
     categoryId?: string;
     note: string;
+    pendingPhysical?: boolean;
   }
 ): Promise<string> {
   const contributionId = `dep-${makeId()}`.slice(0, 48);
@@ -310,6 +311,7 @@ export async function addContribution(
       partnerName,
       sourceTag,
       note,
+      pendingPhysical: Boolean(data.pendingPhysical),
       reactionHeart: false,
       reactionToast: false,
       reactionPlane: false,
@@ -331,6 +333,44 @@ export async function addContribution(
     return contributionId;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, contributionPath);
+  }
+}
+
+export async function setContributionPendingPhysical(
+  vaultId: string,
+  entryId: string,
+  pendingPhysical: boolean
+): Promise<void> {
+  const path = `vaults/${vaultId}/contributions/${entryId}`;
+  try {
+    await updateDoc(doc(db, 'vaults', vaultId, 'contributions', entryId), {
+      pendingPhysical,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function markAllPendingPhysicalInserted(
+  vaultId: string,
+  entryIds: string[]
+): Promise<void> {
+  if (entryIds.length === 0) return;
+  const path = `vaults/${vaultId}/contributions`;
+  try {
+    for (let i = 0; i < entryIds.length; i += 400) {
+      const batch = writeBatch(db);
+      for (const id of entryIds.slice(i, i + 400)) {
+        batch.update(doc(db, 'vaults', vaultId, 'contributions', id), {
+          pendingPhysical: false,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
 

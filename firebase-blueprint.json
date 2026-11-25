@@ -140,6 +140,10 @@
           "type": "string",
           "maxLength": 200
         },
+        "pendingPhysical": {
+          "type": "boolean",
+          "description": "True when already counted in the app total but still pending insertion into the physical home piggy bank."
+        },
         "reactionHeart": {
           "type": "boolean"
         },

@@ -169,7 +169,12 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
     setPushMessage('');
     setPushError('');
     try {
-      const res = await sendTestPush(vault.id, currentPartnerName);
+      const res = await sendTestPush(
+        vault.id,
+        currentPartnerName,
+        currentPartnerKey,
+        notifPrefs
+      );
       if (res.ok) {
         setPushMessage(res.message);
       } else {
@@ -534,17 +539,28 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                     <div
                       role="region"
                       aria-label="Richiesta permessi notifiche"
-                      className="rounded-2xl border border-[#E6DDD1] dark:border-[#264561] bg-[#F2ECE3]/65 dark:bg-[#162D42]/65 px-4 py-3.5 flex items-start gap-2.5"
+                      className="rounded-2xl border border-[#E6DDD1] dark:border-[#264561] bg-[#F2ECE3]/65 dark:bg-[#162D42]/65 px-4 py-3.5 space-y-3"
                     >
-                      <AlertCircle className="w-4 h-4 text-[#E86A52] shrink-0 mt-0.5" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0]">
-                          Apri l’app fuori dall’anteprima
-                        </p>
-                        <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] mt-0.5 leading-relaxed">
-                          Il browser blocca i permessi Push dentro una finestra incorporata. Apri il link diretto o installa SALVAFRICA sulla schermata Home per attivarle.
-                        </p>
+                      <div className="flex items-start gap-2.5">
+                        <AlertCircle className="w-4 h-4 text-[#E86A52] shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0]">
+                            Apri l’app fuori dall’anteprima
+                          </p>
+                          <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] mt-0.5 leading-relaxed">
+                            Il browser blocca i permessi Push dentro una finestra incorporata. Apri il link diretto o installa SALVAFRICA sulla schermata Home per attivarle.
+                          </p>
+                        </div>
                       </div>
+                      <a
+                        href={shareUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full ds-btn-primary"
+                      >
+                        <Bell className="w-4 h-4" />
+                        <span>Apri in una nuova scheda</span>
+                      </a>
                     </div>
                   ) : envStatus.permission === 'denied' ? (
                     <div

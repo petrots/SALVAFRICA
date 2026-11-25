@@ -97,10 +97,14 @@ self.addEventListener('activate', (event) => {
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
-// SPA offline navigation fallback
+// SPA offline navigation fallback (never intercept /api/* endpoints)
 try {
   const handler = createHandlerBoundToURL('/index.html');
-  registerRoute(new NavigationRoute(handler));
+  registerRoute(
+    new NavigationRoute(handler, {
+      denylist: [/^\/api\//],
+    })
+  );
 } catch {
   // Dev mode may not precache /index.html directly
 }

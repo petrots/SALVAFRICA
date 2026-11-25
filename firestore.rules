@@ -73,7 +73,7 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'id', 'amount', 'partnerKey', 'partnerName', 'sourceTag', 'categoryId', 'note',
-          'reactionHeart', 'reactionToast', 'reactionPlane', 'reactionFire',
+          'pendingPhysical', 'reactionHeart', 'reactionToast', 'reactionPlane', 'reactionFire',
           'createdAt', 'updatedAt'
         ])
         && isValidId(data.id) && data.id.size() <= 64
@@ -83,6 +83,7 @@ service cloud.firestore {
         && data.sourceTag is string && data.sourceTag.size() >= 1 && data.sourceTag.size() <= 50
         && (!('categoryId' in data) || (isValidId(data.categoryId) && data.categoryId.size() <= 64))
         && data.note is string && data.note.size() <= 200
+        && (!('pendingPhysical' in data) || data.pendingPhysical is bool)
         && data.reactionHeart is bool
         && data.reactionToast is bool
         && data.reactionPlane is bool
@@ -222,7 +223,11 @@ service cloud.firestore {
             ])
             ||
             incoming().diff(existing()).affectedKeys().hasOnly([
-              'amount', 'partnerKey', 'partnerName', 'sourceTag', 'categoryId', 'note', 'updatedAt'
+              'pendingPhysical', 'updatedAt'
+            ])
+            ||
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'amount', 'partnerKey', 'partnerName', 'sourceTag', 'categoryId', 'note', 'pendingPhysical', 'updatedAt'
             ])
           );
         allow delete: if isMainVault(vaultId) && isValidId(contributionId) && parentVaultExists(vaultId);

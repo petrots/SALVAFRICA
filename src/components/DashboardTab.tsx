@@ -1,10 +1,15 @@
-import React, { useState } from 'react';
-import { ArrowRight, Pencil } from 'lucide-react';
-import { updateLoveNote } from '../services/vaultService';
+import React, { useMemo, useState } from 'react';
+import { ArrowRight, Check, Pencil, PiggyBank, Plus } from 'lucide-react';
+import {
+  markAllPendingPhysicalInserted,
+  setContributionPendingPhysical,
+  updateLoveNote,
+} from '../services/vaultService';
 import { DS_PARTNER_STYLES } from '../styles/designSystem';
 import { APP_LIMITS, Category, Contribution, Vault } from '../types';
 import { resolveContributionCategoryLabel } from '../utils/categories';
 import { formatDateTime, formatEuro } from '../utils/format';
+import { triggerHaptic } from '../utils/haptics';
 import { getSourceIcon } from '../utils/sourceIcons';
 import { JourneyPath } from './JourneyPath';
 
@@ -20,6 +25,7 @@ interface DashboardTabProps {
   justDepositedKey: number;
   celebratedMilestoneEvent: { key: number; index: number } | null;
   onOpenDeposit: () => void;
+  onOpenPhysicalReminder: () => void;
   onNavigateFeed: () => void;
   onLoveNoteUpdated?: (newNote: string) => void;
 }
@@ -36,16 +42,58 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   justDepositedKey,
   celebratedMilestoneEvent,
   onOpenDeposit,
+  onOpenPhysicalReminder,
   onNavigateFeed,
   onLoveNoteUpdated,
 }) => {
   const [editingNote, setEditingNote] = useState(false);
   const [noteDraft, setNoteDraft] = useState(vault.loveNote);
   const [savingNote, setSavingNote] = useState(false);
+  const [busyPhysicalId, setBusyPhysicalId] = useState<string | null>(null);
+  const [clearingAllPhysical, setClearingAllPhysical] = useState(false);
 
   const shareA =
     totalSaved > 0 ? Math.round((partnerATotal / totalSaved) * 100) : 50;
   const shareB = totalSaved > 0 ? 100 - shareA : 50;
+
+  const pendingPhysicalEntries = useMemo(
+    () => contributions.filter((c) => Boolean(c.pendingPhysical)),
+    [contributions]
+  );
+
+  const pendingPhysicalTotal = useMemo(
+    () =>
+      pendingPhysicalEntries.reduce(
+        (acc, c) => acc + (Number(c.amount) || 0),
+        0
+      ),
+    [pendingPhysicalEntries]
+  );
+
+  const handleMarkInserted = async (entryId: string) => {
+    if (busyPhysicalId || clearingAllPhysical) return;
+    setBusyPhysicalId(entryId);
+    try {
+      await setContributionPendingPhysical(vault.id, entryId, false);
+      triggerHaptic('success');
+    } finally {
+      setBusyPhysicalId(null);
+    }
+  };
+
+  const handleMarkAllInserted = async () => {
+    if (clearingAllPhysical || pendingPhysicalEntries.length === 0) return;
+    setClearingAllPhysical(true);
+    try {
+      await markAllPendingPhysicalInserted(
+        vault.id,
+        pendingPhysicalEntries.map((e) => e.id)
+      );
+      triggerHaptic('success');
+    } finally {
+      setClearingAllPhysical(false);
+    }
+  };
 
   const handleSaveNote = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,6 +181,129 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               className="ds-btn-icon -mr-2 shrink-0"
             >
               <Pencil className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* Physical Piggy Bank Reminder (Cardless Editorial Hairline Section) */}
+      <section
+        aria-label="Promemoria salvadanaio fisico"
+        className="border-b ds-divider pb-4 sm:pb-5"
+      >
+        {pendingPhysicalEntries.length > 0 ? (
+          <div className="space-y-3">
+            <div className="flex items-baseline justify-between gap-4">
+              <div className="flex items-start gap-2.5 min-w-0">
+                <PiggyBank className="w-4 h-4 text-[#85580D] dark:text-[#F7C76E] shrink-0 mt-1" />
+                <div className="min-w-0">
+                  <h2 className="ds-heading-section">
+                    Da inserire nel salvadanaio fisico
+                  </h2>
+                  <p className="ds-caption">
+                    Già contati nel totale ·{' '}
+                    {pendingPhysicalEntries.length}{' '}
+                    {pendingPhysicalEntries.length === 1 ? 'importo' : 'importi'} da
+                    mettere a casa
+                  </p>
+                </div>
+              </div>
+
+              <span className="font-display text-2xl font-semibold tabular-nums text-[#85580D] dark:text-[#F7C76E] shrink-0">
+                {formatEuro(pendingPhysicalTotal)}
+              </span>
+            </div>
+
+            <div className="divide-y divide-[#E6DDD1] dark:divide-[#264561] border-t ds-divider">
+              {pendingPhysicalEntries.map((entry) => {
+                const categoryLabel = resolveContributionCategoryLabel(
+                  entry,
+                  categoriesById
+                );
+                const isBusy = busyPhysicalId === entry.id || clearingAllPhysical;
+                return (
+                  <div
+                    key={entry.id}
+                    className="py-2.5 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="flex items-baseline gap-2 min-w-0">
+                        <span className="font-display text-base font-semibold tabular-nums text-[#122638] dark:text-[#FAF6F0] shrink-0">
+                          {formatEuro(entry.amount)}
+                        </span>
+                        <span className="text-sm font-medium text-[#122638] dark:text-[#FAF6F0] truncate">
+                          {entry.note || categoryLabel}
+                        </span>
+                      </div>
+                      <p className="ds-caption truncate">
+                        {entry.partnerName} · {categoryLabel} ·{' '}
+                        {formatDateTime(entry.createdAt)}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => void handleMarkInserted(entry.id)}
+                      aria-label={`Segna ${formatEuro(entry.amount)} come inserito nel salvadanaio fisico`}
+                      className="ds-btn-secondary px-3.5 shrink-0"
+                    >
+                      <Check className="w-3.5 h-3.5 text-[#1A6B8A] dark:text-[#2D8FB3] stroke-[2.5]" />
+                      <span>{busyPhysicalId === entry.id ? 'Salvo...' : 'Inserito'}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+              <button
+                type="button"
+                onClick={onOpenPhysicalReminder}
+                className="min-h-[44px] -ml-2 px-2 rounded-full inline-flex items-center gap-1.5 text-xs font-semibold text-[#1A6B8A] dark:text-[#2D8FB3] hover:text-[#122638] dark:hover:text-[#FAF6F0] transition-colors duration-150 focus:outline-none focus-visible:underline"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[2.25]" />
+                <span>Nuovo promemoria da inserire</span>
+              </button>
+
+              {pendingPhysicalEntries.length > 1 && (
+                <button
+                  type="button"
+                  disabled={clearingAllPhysical}
+                  onClick={() => void handleMarkAllInserted()}
+                  className="ds-btn-ghost -mr-2 text-[#85580D] dark:text-[#F7C76E]"
+                >
+                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>
+                    {clearingAllPhysical
+                      ? 'Aggiorno...'
+                      : 'Segna tutti inseriti'}
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <PiggyBank className="w-4 h-4 text-[#5B6B79] dark:text-[#9DB0C0] shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-[#122638] dark:text-[#FAF6F0] truncate">
+                  Salvadanaio fisico a casa allineato
+                </p>
+                <p className="ds-caption truncate">
+                  Nessun importo già contato in attesa di inserimento
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onOpenPhysicalReminder}
+              className="ds-btn-ghost -mr-2 shrink-0 text-[#1A6B8A] dark:text-[#2D8FB3]"
+            >
+              <Plus className="w-3.5 h-3.5 stroke-[2.25]" />
+              <span>Promemoria</span>
             </button>
           </div>
         )}

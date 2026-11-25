@@ -39,6 +39,7 @@ export interface Contribution {
   sourceTag: string;
   categoryId?: string;
   note: string;
+  pendingPhysical?: boolean;
   reactionHeart: boolean;
   reactionToast: boolean;
   reactionPlane: boolean;

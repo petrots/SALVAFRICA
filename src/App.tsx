@@ -20,8 +20,7 @@ import { db, handleFirestoreError, OperationType } from './firebase';
 import {
   dispatchActivityNotification,
   doesNotificationMatchPrefs,
-  fetchVapidConfig,
-  getActiveBrowserPushSubscription,
+  ensurePushSubscriptionSynced,
   getNotificationPrefs,
   getSavedPartnerKey,
   isNotificationForPartner,
@@ -73,6 +72,7 @@ export default function App() {
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [pushSubscriptions, setPushSubscriptions] = useState<PushSubscriptionRecord[]>([]);
+  const [pushSubscriptionsLoaded, setPushSubscriptionsLoaded] = useState(false);
   const ensuringVaultRef = useRef(false);
   const seedingCategoryRef = useRef(false);
 
@@ -94,7 +94,13 @@ export default function App() {
     }
   });
   const [depositOpen, setDepositOpen] = useState(false);
+  const [depositDefaultPhysical, setDepositDefaultPhysical] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const openDepositSheet = (defaultPhysical = false) => {
+    setDepositDefaultPhysical(defaultPhysical);
+    setDepositOpen(true);
+  };
   const [notificationsOpen, setNotificationsOpen] = useState(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -307,6 +313,7 @@ export default function App() {
         setPushSubscriptions(
           snap.docs.map((d) => d.data() as PushSubscriptionRecord)
         );
+        setPushSubscriptionsLoaded(true);
       },
       (error) => {
         handleFirestoreError(error, OperationType.LIST, subsPath);
@@ -322,24 +329,50 @@ export default function App() {
     };
   }, []);
 
-  // Check existing browser Push subscription & VAPID status on mount
+  const pushSubscriptionsRef = useRef(pushSubscriptions);
+  pushSubscriptionsRef.current = pushSubscriptions;
+  const syncingPushRef = useRef(false);
+
+  // Check & auto-heal browser Push subscription, VAPID key alignment, and Firestore registration
   useEffect(() => {
+    if (!pushSubscriptionsLoaded) return;
     let active = true;
-    void (async () => {
-      const [sub, vapid] = await Promise.all([
-        getActiveBrowserPushSubscription(),
-        fetchVapidConfig(),
-      ]);
-      if (!active) return;
-      setPushSubscribed(Boolean(sub));
-      if (vapid) {
-        setPersistentVapid(vapid.persistent);
+
+    const runSync = async () => {
+      if (syncingPushRef.current) return;
+      syncingPushRef.current = true;
+      try {
+        const result = await ensurePushSubscriptionSynced(
+          MAIN_VAULT_ID,
+          partnerKeyRef.current,
+          notifPrefsRef.current,
+          pushSubscriptionsRef.current
+        );
+        if (!active) return;
+        setPushSubscribed(result.subscribed);
+        if (typeof result.persistentVapid === 'boolean') {
+          setPersistentVapid(result.persistentVapid);
+        }
+      } finally {
+        syncingPushRef.current = false;
       }
-    })();
+    };
+
+    void runSync();
+
+    const handleResume = () => {
+      if (document.visibilityState === 'hidden') return;
+      void runSync();
+    };
+    window.addEventListener('focus', handleResume);
+    document.addEventListener('visibilitychange', handleResume);
+
     return () => {
       active = false;
+      window.removeEventListener('focus', handleResume);
+      document.removeEventListener('visibilitychange', handleResume);
     };
-  }, []);
+  }, [pushSubscriptionsLoaded]);
 
   const relevantNotifications = useMemo(
     () =>
@@ -629,6 +662,9 @@ export default function App() {
 
     const targetPartnerKey: PartnerKey = meta.partnerKey === 'A' ? 'B' : 'A';
     const noteSuffix = meta.note ? ` — “${meta.note}”` : '';
+    const physicalSuffix = meta.pendingPhysical
+      ? ' · Da inserire nel salvadanaio fisico'
+      : '';
 
     void dispatchActivityNotification(
       vault.id,
@@ -638,7 +674,7 @@ export default function App() {
         actorName: meta.partnerName,
         targetPartnerKey,
         title: `Nuovo versamento di ${meta.partnerName}`,
-        body: `+${formatEuro(addedAmount)} · ${meta.categoryName}${noteSuffix}`,
+        body: `+${formatEuro(addedAmount)} · ${meta.categoryName}${noteSuffix}${physicalSuffix}`,
         amount: addedAmount,
         contributionId: meta.contributionId,
       },
@@ -813,7 +849,7 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() => setDepositOpen(true)}
+              onClick={() => openDepositSheet(false)}
               className="hidden md:inline-flex ds-btn-primary"
             >
               <Plus className="w-4 h-4 stroke-[2.25]" />
@@ -848,7 +884,8 @@ export default function App() {
               partnerBCount={stats.partnerBCount}
               justDepositedKey={justDepositedKey}
               celebratedMilestoneEvent={celebratedMilestoneEvent}
-              onOpenDeposit={() => setDepositOpen(true)}
+              onOpenDeposit={() => openDepositSheet(false)}
+              onOpenPhysicalReminder={() => openDepositSheet(true)}
               onNavigateFeed={() => setActiveTab('feed')}
               onLoveNoteUpdated={handleLoveNoteUpdated}
             />
@@ -860,7 +897,7 @@ export default function App() {
               contributions={contributions}
               categoriesById={categoriesById}
               currentPartnerKey={currentPartnerKey}
-              onOpenDeposit={() => setDepositOpen(true)}
+              onOpenDeposit={() => openDepositSheet(false)}
               onReactionAdded={handleReactionAdded}
             />
           )}
@@ -896,7 +933,7 @@ export default function App() {
 
           <button
             type="button"
-            onClick={() => setDepositOpen(true)}
+            onClick={() => openDepositSheet(false)}
             aria-label="Versa extra"
             className="flex flex-col items-center justify-end gap-1 pb-0.5 active:scale-95 transition-transform duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] rounded-2xl"
           >
@@ -934,12 +971,16 @@ export default function App() {
       {/* Modals / Bottom Sheets */}
       <DepositSheet
         isOpen={depositOpen}
-        onClose={() => setDepositOpen(false)}
+        onClose={() => {
+          setDepositOpen(false);
+          setDepositDefaultPhysical(false);
+        }}
         vault={vault}
         categories={sortedCategories}
         activeCategories={activeCategories}
         categoriesLoaded={categoriesLoaded}
         currentPartnerKey={currentPartnerKey}
+        defaultPendingPhysical={depositDefaultPhysical}
         onChangePartnerKey={handleChangePartnerKey}
         onDepositStart={handleDepositStart}
         onSuccessDeposit={handleDepositSuccess}

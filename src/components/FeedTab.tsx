@@ -1,15 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Check, PiggyBank, Plus, Trash2 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   deleteContribution,
   ReactionField,
+  setContributionPendingPhysical,
   toggleContributionReaction,
 } from '../services/vaultService';
 import { DS_DURATION, DS_EASE, DS_PARTNER_STYLES } from '../styles/designSystem';
 import { Category, Contribution, PartnerKey, Vault } from '../types';
 import { resolveContributionCategoryLabel } from '../utils/categories';
 import { formatDateTime, formatEuro } from '../utils/format';
+import { triggerHaptic } from '../utils/haptics';
 import { getSourceIcon } from '../utils/sourceIcons';
 
 interface FeedTabProps {
@@ -40,8 +42,9 @@ export const FeedTab: React.FC<FeedTabProps> = ({
   onOpenDeposit,
   onReactionAdded,
 }) => {
-  const [filter, setFilter] = useState<'all' | 'A' | 'B'>('all');
+  const [filter, setFilter] = useState<'all' | 'A' | 'B' | 'pending'>('all');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [busyPhysicalId, setBusyPhysicalId] = useState<string | null>(null);
   const prefersReducedMotion = useReducedMotion();
 
   // Track known contribution IDs so only genuinely new items trigger the slide-in entrance
@@ -68,8 +71,16 @@ export const FeedTab: React.FC<FeedTabProps> = ({
     }
   }, [contributions]);
 
+  const pendingPhysicalCount = useMemo(
+    () => contributions.filter((c) => Boolean(c.pendingPhysical)).length,
+    [contributions]
+  );
+
   const filtered = useMemo(() => {
     if (filter === 'all') return contributions;
+    if (filter === 'pending') {
+      return contributions.filter((c) => Boolean(c.pendingPhysical));
+    }
     return contributions.filter((c) => c.partnerKey === filter);
   }, [contributions, filter]);
 
@@ -85,6 +96,18 @@ export const FeedTab: React.FC<FeedTabProps> = ({
       const reaction = REACTIONS.find((r) => r.field === field);
       const categoryLabel = resolveContributionCategoryLabel(entry, categoriesById);
       onReactionAdded?.(entry, reaction?.emoji || '❤️', categoryLabel);
+    }
+  };
+
+  const handleTogglePendingPhysical = async (entry: Contribution) => {
+    if (busyPhysicalId) return;
+    const nextPending = !Boolean(entry.pendingPhysical);
+    setBusyPhysicalId(entry.id);
+    try {
+      await setContributionPendingPhysical(vault.id, entry.id, nextPending);
+      triggerHaptic(nextPending ? 'selection' : 'success');
+    } finally {
+      setBusyPhysicalId(null);
     }
   };
 
@@ -174,6 +197,30 @@ export const FeedTab: React.FC<FeedTabProps> = ({
               />
             )}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setFilter('pending')}
+            aria-current={filter === 'pending' ? 'page' : undefined}
+            className={`relative min-h-[44px] inline-flex items-center gap-1.5 text-sm transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:text-[#1A6B8A] ${
+              filter === 'pending'
+                ? 'font-semibold text-[#122638] dark:text-[#FAF6F0]'
+                : 'font-medium text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0]'
+            }`}
+          >
+            <span>Da inserire</span>
+            {pendingPhysicalCount > 0 && (
+              <span className="text-xs font-semibold tabular-nums text-[#85580D] dark:text-[#F7C76E]">
+                ({pendingPhysicalCount})
+              </span>
+            )}
+            {filter === 'pending' && (
+              <span
+                aria-hidden="true"
+                className="absolute inset-x-0 bottom-0 h-[2px] bg-[#E09F3E]"
+              />
+            )}
+          </button>
         </nav>
       </header>
 
@@ -181,19 +228,33 @@ export const FeedTab: React.FC<FeedTabProps> = ({
       {filtered.length === 0 ? (
         <div className="py-10 sm:py-14 text-center space-y-4">
           <p className="font-display text-xl sm:text-2xl font-semibold text-[#122638] dark:text-[#FAF6F0]">
-            Nessun versamento qui per ora
+            {filter === 'pending'
+              ? 'Nessun importo da inserire'
+              : 'Nessun versamento qui per ora'}
           </p>
           <p className="text-sm text-[#5B6B79] dark:text-[#9DB0C0] max-w-md mx-auto leading-relaxed">
-            Aggiungete un’entrata da una vendita, un lavoretto, una scommessa o monetine trovate.
+            {filter === 'pending'
+              ? 'Tutti i versamenti registrati risultano già messi nel salvadanaio fisico a casa.'
+              : 'Aggiungete un’entrata da una vendita, un lavoretto, una scommessa o monetine trovate.'}
           </p>
-          <button
-            type="button"
-            onClick={onOpenDeposit}
-            className="ds-btn-primary px-5 py-2.5 text-sm"
-          >
-            <Plus className="w-4 h-4 stroke-[2.25]" />
-            <span>Nuovo versamento extra</span>
-          </button>
+          {filter === 'pending' ? (
+            <button
+              type="button"
+              onClick={() => setFilter('all')}
+              className="ds-btn-secondary px-5 py-2.5 text-sm"
+            >
+              Vedi tutti i movimenti
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenDeposit}
+              className="ds-btn-primary px-5 py-2.5 text-sm"
+            >
+              <Plus className="w-4 h-4 stroke-[2.25]" />
+              <span>Nuovo versamento extra</span>
+            </button>
+          )}
         </div>
       ) : (
         <div className="divide-y divide-[#E6DDD1] dark:divide-[#264561] border-b ds-divider overflow-hidden">
@@ -255,6 +316,12 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                         <span aria-hidden="true">·</span>
                         <span>{formatDateTime(entry.createdAt)}</span>
                       </div>
+                      {entry.pendingPhysical && (
+                        <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#85580D] dark:text-[#F7C76E] pt-0.5">
+                          <PiggyBank className="w-3.5 h-3.5 shrink-0" />
+                          <span>Da inserire nel salvadanaio fisico</span>
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -265,7 +332,7 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                   </div>
                 </div>
 
-                {/* Partner Reactions & Delete Controls (Visually Subordinate, 44px Hit Targets) */}
+                {/* Partner Reactions, Physical Jar Status & Delete Controls (44px Hit Targets) */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pl-11">
                   <div className="flex items-center gap-0.5 sm:gap-1 -ml-1.5">
                     {REACTIONS.map((reaction) => {
@@ -311,14 +378,41 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                       </button>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDeleteId(entry.id)}
-                      aria-label="Elimina versamento"
-                      className="ds-btn-icon -mr-2.5 hover:text-[#D1533C] dark:hover:text-[#E86A52] hover:bg-[#E86A52]/10"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1 -mr-2.5">
+                      {entry.pendingPhysical ? (
+                        <button
+                          type="button"
+                          disabled={busyPhysicalId === entry.id}
+                          onClick={() => void handleTogglePendingPhysical(entry)}
+                          className="min-h-[44px] px-3 rounded-full bg-[#E09F3E]/15 border border-[#E09F3E]/40 hover:bg-[#E09F3E]/25 active:scale-[0.98] text-xs font-semibold text-[#85580D] dark:text-[#F7C76E] inline-flex items-center gap-1.5 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] whitespace-nowrap disabled:opacity-45"
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                          <span>
+                            {busyPhysicalId === entry.id ? 'Salvo...' : 'Inserito'}
+                          </span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={busyPhysicalId === entry.id}
+                          onClick={() => void handleTogglePendingPhysical(entry)}
+                          aria-label="Segna da inserire nel salvadanaio fisico"
+                          className="ds-btn-ghost px-2.5 text-xs"
+                        >
+                          <PiggyBank className="w-3.5 h-3.5" />
+                          <span>Da inserire</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(entry.id)}
+                        aria-label="Elimina versamento"
+                        className="ds-btn-icon hover:text-[#D1533C] dark:hover:text-[#E86A52] hover:bg-[#E86A52]/10"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
                 </motion.article>
