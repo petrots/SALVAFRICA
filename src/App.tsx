@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   collection,
   doc,
+  limit,
   onSnapshot,
   orderBy,
   query,
 } from 'firebase/firestore';
 import confetti from 'canvas-confetti';
 import {
+  Bell,
   ListChecks,
   Plus,
   Route,
@@ -15,6 +17,24 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from './firebase';
+import {
+  dispatchActivityNotification,
+  doesNotificationMatchPrefs,
+  fetchVapidConfig,
+  getActiveBrowserPushSubscription,
+  getNotificationPrefs,
+  getSavedPartnerKey,
+  isNotificationForPartner,
+  isNotificationUnread,
+  markNotificationRead,
+  saveNotificationPrefs,
+  savePartnerKey,
+  showLocalNotificationIfHidden,
+  subscribeDeviceToPush,
+  syncBrowserAppBadge,
+  syncSubscriptionPreferences,
+  unsubscribeDeviceFromPush,
+} from './services/notificationService';
 import {
   DEFAULT_VAULT,
   ensureInitialCategoryExists,
@@ -25,14 +45,21 @@ import {
   Contribution,
   MAIN_VAULT_ID,
   MILESTONES,
+  NotificationItem,
+  NotificationPreferences,
+  PartnerKey,
+  PushSubscriptionRecord,
   Vault,
 } from './types';
 import { DashboardTab } from './components/DashboardTab';
-import { DepositSheet } from './components/DepositSheet';
+import { DepositSheet, DepositSuccessMeta } from './components/DepositSheet';
 import { FeedTab } from './components/FeedTab';
+import { NotificationsSheet } from './components/NotificationsSheet';
+import { NotificationToast } from './components/NotificationToast';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { SettingsSheet } from './components/SettingsSheet';
 import { sortCategoriesByLastUsed } from './utils/categories';
+import { formatEuro } from './utils/format';
 import { triggerHaptic } from './utils/haptics';
 
 type ActiveTab = 'home' | 'feed';
@@ -44,12 +71,39 @@ export default function App() {
   const [contributionsLoaded, setContributionsLoaded] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [pushSubscriptions, setPushSubscriptions] = useState<PushSubscriptionRecord[]>([]);
   const ensuringVaultRef = useRef(false);
   const seedingCategoryRef = useRef(false);
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('home');
+  const [currentPartnerKey, setCurrentPartnerKey] = useState<PartnerKey>(() =>
+    getSavedPartnerKey()
+  );
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>(() =>
+    getNotificationPrefs()
+  );
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [persistentVapid, setPersistentVapid] = useState<boolean | null>(null);
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('tab') === 'feed' ? 'feed' : 'home';
+    } catch {
+      return 'home';
+    }
+  });
   const [depositOpen, setDepositOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('notifications') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [liveToast, setLiveToast] = useState<NotificationItem | null>(null);
 
   const [justDepositedKey, setJustDepositedKey] = useState(0);
   const [milestoneBanner, setMilestoneBanner] = useState<string | null>(null);
@@ -74,7 +128,7 @@ export default function App() {
     }
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) {
-      metaTheme.setAttribute('content', isDark ? '#0E1F2E' : '#FAF8F5');
+      metaTheme.setAttribute('content', isDark ? '#0E1F2E' : '#FAF6F0');
     }
     try {
       window.localStorage.setItem('salvafrica_theme', isDark ? 'dark' : 'light');
@@ -177,6 +231,232 @@ export default function App() {
     }
   }, [vaultLoaded, categoriesLoaded, categories.length]);
 
+  // Listen to notifications and push subscriptions in real time
+  const initialNotifSyncDoneRef = useRef(false);
+  const seenNotifIdsRef = useRef<Set<string>>(new Set());
+  const toastTimerRef = useRef<number | null>(null);
+  const partnerKeyRef = useRef(currentPartnerKey);
+  partnerKeyRef.current = currentPartnerKey;
+  const notifPrefsRef = useRef(notifPrefs);
+  notifPrefsRef.current = notifPrefs;
+
+  useEffect(() => {
+    const notifPath = `vaults/${MAIN_VAULT_ID}/notifications`;
+    const notifQuery = query(
+      collection(db, notifPath),
+      orderBy('createdAt', 'desc'),
+      limit(60)
+    );
+    const unsubNotifs = onSnapshot(
+      notifQuery,
+      (snap) => {
+        const items = snap.docs.map((d) => d.data() as NotificationItem);
+        setNotifications(items);
+
+        if (!initialNotifSyncDoneRef.current) {
+          for (const item of items) {
+            seenNotifIdsRef.current.add(item.id);
+          }
+          initialNotifSyncDoneRef.current = true;
+          return;
+        }
+
+        for (const item of items) {
+          if (seenNotifIdsRef.current.has(item.id)) continue;
+          seenNotifIdsRef.current.add(item.id);
+
+          const activePartner = partnerKeyRef.current;
+          const prefs = notifPrefsRef.current;
+          if (
+            isNotificationForPartner(item, activePartner) &&
+            isNotificationUnread(item, activePartner) &&
+            doesNotificationMatchPrefs(item, prefs)
+          ) {
+            setLiveToast(item);
+            triggerHaptic('selection');
+            if (toastTimerRef.current !== null) {
+              window.clearTimeout(toastTimerRef.current);
+            }
+            toastTimerRef.current = window.setTimeout(() => {
+              setLiveToast(null);
+              toastTimerRef.current = null;
+            }, 4600);
+
+            const targetUrl =
+              item.type === 'deposit' || item.type === 'reaction'
+                ? '/?tab=feed'
+                : '/?tab=home';
+            void showLocalNotificationIfHidden(
+              item.title,
+              item.body,
+              item.id,
+              targetUrl
+            );
+          }
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, notifPath);
+      }
+    );
+
+    const subsPath = `vaults/${MAIN_VAULT_ID}/pushSubscriptions`;
+    const unsubSubs = onSnapshot(
+      collection(db, subsPath),
+      (snap) => {
+        setPushSubscriptions(
+          snap.docs.map((d) => d.data() as PushSubscriptionRecord)
+        );
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, subsPath);
+      }
+    );
+
+    return () => {
+      unsubNotifs();
+      unsubSubs();
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Check existing browser Push subscription & VAPID status on mount
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const [sub, vapid] = await Promise.all([
+        getActiveBrowserPushSubscription(),
+        fetchVapidConfig(),
+      ]);
+      if (!active) return;
+      setPushSubscribed(Boolean(sub));
+      if (vapid) {
+        setPersistentVapid(vapid.persistent);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const relevantNotifications = useMemo(
+    () =>
+      notifications.filter((n) => isNotificationForPartner(n, currentPartnerKey)),
+    [notifications, currentPartnerKey]
+  );
+
+  const unreadNotificationsCount = useMemo(
+    () =>
+      relevantNotifications.filter((n) =>
+        isNotificationUnread(n, currentPartnerKey)
+      ).length,
+    [relevantNotifications, currentPartnerKey]
+  );
+
+  // Sync unread counter to iPhone Home Screen PWA app badge
+  useEffect(() => {
+    syncBrowserAppBadge(unreadNotificationsCount);
+  }, [unreadNotificationsCount]);
+
+  // Handle Service Worker notification taps and APNs/browser push key rotation
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+      return;
+    }
+
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; path?: string } | null;
+      if (!data || typeof data.type !== 'string') return;
+
+      if (data.type === 'SALVAFRICA_NAVIGATE' && typeof data.path === 'string') {
+        try {
+          const parsedUrl = new URL(data.path, window.location.origin);
+          if (parsedUrl.searchParams.get('notifications') === '1') {
+            setNotificationsOpen(true);
+            return;
+          }
+          if (parsedUrl.searchParams.get('tab') === 'feed') {
+            setNotificationsOpen(false);
+            setActiveTab('feed');
+            return;
+          }
+          setNotificationsOpen(false);
+          setActiveTab('home');
+        } catch {
+          setActiveTab('home');
+        }
+      } else if (data.type === 'SALVAFRICA_PUSH_SUBSCRIPTION_CHANGED') {
+        if (
+          typeof window !== 'undefined' &&
+          'Notification' in window &&
+          window.Notification.permission === 'granted'
+        ) {
+          void subscribeDeviceToPush(
+            MAIN_VAULT_ID,
+            partnerKeyRef.current,
+            notifPrefsRef.current
+          ).then((res) => {
+            if (res.ok) {
+              setPushSubscribed(true);
+            }
+          });
+        }
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener(
+        'message',
+        handleServiceWorkerMessage
+      );
+    };
+  }, []);
+
+  const handleChangePartnerKey = (nextKey: PartnerKey) => {
+    setCurrentPartnerKey(nextKey);
+    savePartnerKey(nextKey);
+    void syncSubscriptionPreferences(
+      vault.id,
+      nextKey,
+      notifPrefs,
+      pushSubscriptions
+    );
+  };
+
+  const handleUpdateNotifPrefs = (nextPrefs: NotificationPreferences) => {
+    setNotifPrefs(nextPrefs);
+    saveNotificationPrefs(nextPrefs);
+    void syncSubscriptionPreferences(
+      vault.id,
+      currentPartnerKey,
+      nextPrefs,
+      pushSubscriptions
+    );
+  };
+
+  const handleEnablePush = async () => {
+    const result = await subscribeDeviceToPush(
+      vault.id,
+      currentPartnerKey,
+      notifPrefs
+    );
+    if (result.ok) {
+      setPushSubscribed(true);
+      if (typeof result.persistentVapid === 'boolean') {
+        setPersistentVapid(result.persistentVapid);
+      }
+    }
+    return result;
+  };
+
+  const handleDisablePush = async () => {
+    await unsubscribeDeviceFromPush(vault.id);
+    setPushSubscribed(false);
+  };
+
   const sortedCategories = useMemo(
     () => sortCategoriesByLastUsed(categories),
     [categories]
@@ -238,8 +518,8 @@ export default function App() {
     };
   }, []);
 
-  const evaluateMilestoneCelebration = (effectiveSaved: number): boolean => {
-    if (!vaultLoaded || !contributionsLoaded) return false;
+  const evaluateMilestoneCelebration = (effectiveSaved: number): string | null => {
+    if (!vaultLoaded || !contributionsLoaded) return null;
 
     const target = Math.max(1, vault.targetAmount);
     const scopeKey = `salvafrica_celebrated_${vault.id}_${target}`;
@@ -273,7 +553,7 @@ export default function App() {
       } catch {
         // Ignore storage restrictions
       }
-      return false;
+      return null;
     }
 
     const newlyUnlocked = MILESTONES.filter(
@@ -281,7 +561,7 @@ export default function App() {
     );
 
     if (newlyUnlocked.length === 0) {
-      return false;
+      return null;
     }
 
     for (const m of newlyUnlocked) {
@@ -311,7 +591,7 @@ export default function App() {
       particleCount: highest.percent === 100 ? 140 : 85,
       spread: 70,
       origin: { y: 0.6 },
-      colors: ['#E86A52', '#1A6B8A', '#D99B38', '#FAF8F5'],
+      colors: ['#E86A52', '#1A6B8A', '#D99B38', '#FAF6F0'],
       disableForReducedMotion: true,
     });
 
@@ -323,7 +603,7 @@ export default function App() {
       bannerTimerRef.current = null;
     }, 5000);
 
-    return true;
+    return highest.label;
   };
 
   useEffect(() => {
@@ -335,15 +615,94 @@ export default function App() {
     pendingPreDepositTotalRef.current = totalSavedRef.current;
   };
 
-  const handleDepositSuccess = (addedAmount: number): boolean => {
+  const handleDepositSuccess = (
+    addedAmount: number,
+    meta: DepositSuccessMeta
+  ): boolean => {
     setJustDepositedKey((k) => k + 1);
     const baseline = pendingPreDepositTotalRef.current ?? totalSavedRef.current;
     pendingPreDepositTotalRef.current = null;
     const effectiveTotal = Math.max(totalSavedRef.current, baseline + addedAmount);
 
-    const celebratedNow = evaluateMilestoneCelebration(effectiveTotal);
+    const unlockedLabel = evaluateMilestoneCelebration(effectiveTotal);
     const celebratedViaSnapshot = Date.now() - lastMilestoneEventTimeRef.current < 2000;
-    return celebratedNow || celebratedViaSnapshot;
+
+    const targetPartnerKey: PartnerKey = meta.partnerKey === 'A' ? 'B' : 'A';
+    const noteSuffix = meta.note ? ` — “${meta.note}”` : '';
+
+    void dispatchActivityNotification(
+      vault.id,
+      {
+        type: 'deposit',
+        actorKey: meta.partnerKey,
+        actorName: meta.partnerName,
+        targetPartnerKey,
+        title: `Nuovo versamento di ${meta.partnerName}`,
+        body: `+${formatEuro(addedAmount)} · ${meta.categoryName}${noteSuffix}`,
+        amount: addedAmount,
+        contributionId: meta.contributionId,
+      },
+      pushSubscriptions
+    );
+
+    if (unlockedLabel) {
+      void dispatchActivityNotification(
+        vault.id,
+        {
+          type: 'milestone',
+          actorKey: 'system',
+          actorName: 'SALVAFRICA',
+          targetPartnerKey: 'all',
+          title: 'Traguardo sbloccato!',
+          body: `${unlockedLabel} · Totale raccolto ${formatEuro(effectiveTotal)}`,
+        },
+        pushSubscriptions
+      );
+    }
+
+    return Boolean(unlockedLabel) || celebratedViaSnapshot;
+  };
+
+  const handleReactionAdded = (
+    entry: Contribution,
+    reactionEmoji: string,
+    categoryLabel: string
+  ) => {
+    const actorName =
+      currentPartnerKey === 'A' ? vault.partnerAName : vault.partnerBName;
+    void dispatchActivityNotification(
+      vault.id,
+      {
+        type: 'reaction',
+        actorKey: currentPartnerKey,
+        actorName,
+        targetPartnerKey: entry.partnerKey,
+        title: `${actorName} ha reagito ${reactionEmoji}`,
+        body: `Al tuo versamento di +${formatEuro(entry.amount)} (${categoryLabel})`,
+        amount: entry.amount,
+        contributionId: entry.id,
+        reactionEmoji,
+      },
+      pushSubscriptions
+    );
+  };
+
+  const handleLoveNoteUpdated = (newNote: string) => {
+    const actorName =
+      currentPartnerKey === 'A' ? vault.partnerAName : vault.partnerBName;
+    const targetPartnerKey: PartnerKey = currentPartnerKey === 'A' ? 'B' : 'A';
+    void dispatchActivityNotification(
+      vault.id,
+      {
+        type: 'love_note',
+        actorKey: currentPartnerKey,
+        actorName,
+        targetPartnerKey,
+        title: `${actorName} ha aggiornato il bigliettino`,
+        body: `“${newNote}”`,
+      },
+      pushSubscriptions
+    );
   };
 
   if (!vaultLoaded) {
@@ -362,6 +721,19 @@ export default function App() {
   return (
     <div className="h-[100dvh] w-full overflow-hidden bg-[#FAF6F0] dark:bg-[#0E1F2E] text-[#122638] dark:text-[#FAF6F0] flex flex-col transition-colors duration-200">
       <OfflineIndicator />
+      <NotificationToast
+        notification={liveToast}
+        onDismiss={() => setLiveToast(null)}
+        onOpen={(item) => {
+          void markNotificationRead(vault.id, item, currentPartnerKey);
+          setLiveToast(null);
+          if (item.type === 'deposit' || item.type === 'reaction') {
+            setActiveTab('feed');
+          } else {
+            setActiveTab('home');
+          }
+        }}
+      />
 
       {/* Top Navigation Bar */}
       <header className="shrink-0 z-30 bg-[#FAF6F0]/95 dark:bg-[#0E1F2E]/95 backdrop-blur-md border-b border-[#E6DDD1] dark:border-[#264561] pt-safe transition-colors duration-200">
@@ -411,7 +783,25 @@ export default function App() {
             </button>
           </nav>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setNotificationsOpen(true)}
+              aria-label={
+                unreadNotificationsCount > 0
+                  ? `Notifiche (${unreadNotificationsCount} non lette)`
+                  : 'Notifiche'
+              }
+              className="relative min-h-[44px] min-w-[44px] rounded-full text-[#122638]/80 dark:text-[#FAF6F0]/85 hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952] active:bg-[#E6DDD1] dark:active:bg-[#264561] transition-colors flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A]/50"
+            >
+              <Bell className="w-5 h-5 stroke-[1.9]" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 min-w-[17px] h-[17px] px-1 rounded-full bg-[#E86A52] text-[10px] font-bold leading-none text-white flex items-center justify-center tabular-nums ring-2 ring-[#FAF6F0] dark:ring-[#0E1F2E]">
+                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                </span>
+              )}
+            </button>
+
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}
@@ -424,10 +814,10 @@ export default function App() {
             <button
               type="button"
               onClick={() => setDepositOpen(true)}
-              className="hidden md:inline-flex min-h-[40px] px-4 rounded-xl bg-[#E86A52] text-xs font-semibold text-white hover:bg-[#D1533C] transition-colors items-center gap-1.5 whitespace-nowrap shrink-0"
+              className="hidden md:inline-flex ds-btn-primary"
             >
-              <Plus className="w-4 h-4" />
-              Versa extra
+              <Plus className="w-4 h-4 stroke-[2.25]" />
+              <span>Versa extra</span>
             </button>
           </div>
         </div>
@@ -437,7 +827,7 @@ export default function App() {
       {milestoneBanner && (
         <div className="shrink-0 mx-auto max-w-6xl w-full px-4 sm:px-6 pt-3">
           <div className="rounded-2xl bg-[#E09F3E]/15 border border-[#E09F3E]/40 px-4 py-3 text-sm font-semibold text-[#122638] dark:text-[#FAF6F0] flex items-center justify-center gap-2">
-            <Sparkles className="w-4 h-4 text-[#E09F3E]" />
+            <Sparkles className="w-4 h-4 text-[#85580D] dark:text-[#F7C76E] shrink-0" />
             <span>{milestoneBanner}</span>
           </div>
         </div>
@@ -445,7 +835,7 @@ export default function App() {
 
       {/* Scrollable Main Content (isolated scroll container, zero overscroll bleed) */}
       <main className="flex-1 min-h-0 overflow-y-auto overscroll-none">
-        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 pb-10 md:pb-12">
+        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-5 sm:py-6 pb-8 md:pb-12">
           {activeTab === 'home' && (
             <DashboardTab
               vault={vault}
@@ -460,6 +850,7 @@ export default function App() {
               celebratedMilestoneEvent={celebratedMilestoneEvent}
               onOpenDeposit={() => setDepositOpen(true)}
               onNavigateFeed={() => setActiveTab('feed')}
+              onLoveNoteUpdated={handleLoveNoteUpdated}
             />
           )}
 
@@ -468,7 +859,9 @@ export default function App() {
               vault={vault}
               contributions={contributions}
               categoriesById={categoriesById}
+              currentPartnerKey={currentPartnerKey}
               onOpenDeposit={() => setDepositOpen(true)}
+              onReactionAdded={handleReactionAdded}
             />
           )}
         </div>
@@ -477,13 +870,13 @@ export default function App() {
       {/* Mobile Bottom Tab Bar anchored flush to viewport bottom */}
       <nav
         aria-label="Navigazione principale"
-        className="md:hidden shrink-0 z-40 bg-white/95 dark:bg-[#162D42]/95 backdrop-blur-md border-t border-[#E6DDD1] dark:border-[#264561] pb-safe shadow-[0_-4px_20px_-8px_rgba(18,38,56,0.08)] dark:shadow-[0_-4px_20px_-8px_rgba(0,0,0,0.45)] transition-colors duration-200"
+        className="md:hidden shrink-0 z-40 bg-[#FAF6F0]/95 dark:bg-[#162D42]/95 backdrop-blur-md border-t border-[#E6DDD1] dark:border-[#264561] pb-safe shadow-[0_-4px_20px_-8px_rgba(18,38,56,0.08)] dark:shadow-[0_-4px_20px_-8px_rgba(0,0,0,0.45)] transition-colors duration-200"
       >
         <div className="grid grid-cols-3 items-end h-[64px] px-3 pb-1.5">
           <button
             type="button"
             onClick={() => setActiveTab('home')}
-            className={`min-h-[48px] flex flex-col items-center justify-end gap-1 pb-0.5 transition-colors ${
+            className={`min-h-[48px] flex flex-col items-center justify-end gap-1 pb-0.5 rounded-xl transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] ${
               activeTab === 'home' ? 'text-[#E86A52]' : 'text-[#5B6B79] dark:text-[#9DB0C0]'
             }`}
           >
@@ -505,9 +898,9 @@ export default function App() {
             type="button"
             onClick={() => setDepositOpen(true)}
             aria-label="Versa extra"
-            className="flex flex-col items-center justify-end gap-1 pb-0.5 active:scale-95 transition-transform"
+            className="flex flex-col items-center justify-end gap-1 pb-0.5 active:scale-95 transition-transform duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] rounded-2xl"
           >
-            <span className="w-[62px] h-[50px] rounded-[18px] bg-gradient-to-br from-[#E86A52] to-[#D1533C] text-white flex items-center justify-center shadow-[0_8px_18px_-4px_rgba(232,106,82,0.48)] ring-[4px] ring-white dark:ring-[#162D42]">
+            <span className="w-[62px] h-[50px] rounded-[18px] bg-gradient-to-br from-[#E86A52] to-[#D1533C] text-white flex items-center justify-center shadow-[0_8px_18px_-4px_rgba(232,106,82,0.48)] ring-[4px] ring-[#FAF6F0] dark:ring-[#162D42]">
               <Plus className="w-7 h-7 stroke-[2.5]" />
             </span>
             <span className="text-[11px] leading-none font-bold tracking-tight text-[#E86A52]">
@@ -518,7 +911,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setActiveTab('feed')}
-            className={`min-h-[48px] flex flex-col items-center justify-end gap-1 pb-0.5 transition-colors ${
+            className={`min-h-[48px] flex flex-col items-center justify-end gap-1 pb-0.5 rounded-xl transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] ${
               activeTab === 'feed' ? 'text-[#E86A52]' : 'text-[#5B6B79] dark:text-[#9DB0C0]'
             }`}
           >
@@ -546,8 +939,23 @@ export default function App() {
         categories={sortedCategories}
         activeCategories={activeCategories}
         categoriesLoaded={categoriesLoaded}
+        currentPartnerKey={currentPartnerKey}
+        onChangePartnerKey={handleChangePartnerKey}
         onDepositStart={handleDepositStart}
         onSuccessDeposit={handleDepositSuccess}
+      />
+
+      <NotificationsSheet
+        isOpen={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        vault={vault}
+        notifications={relevantNotifications}
+        currentPartnerKey={currentPartnerKey}
+        onChangePartnerKey={handleChangePartnerKey}
+        pushSubscribed={pushSubscribed}
+        onEnablePush={handleEnablePush}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onNavigateTab={(tab) => setActiveTab(tab)}
       />
 
       <SettingsSheet
@@ -558,6 +966,14 @@ export default function App() {
         contributions={contributions}
         isDark={isDark}
         onToggleTheme={() => setIsDark((prev) => !prev)}
+        currentPartnerKey={currentPartnerKey}
+        onChangePartnerKey={handleChangePartnerKey}
+        notifPrefs={notifPrefs}
+        onUpdateNotifPrefs={handleUpdateNotifPrefs}
+        pushSubscribed={pushSubscribed}
+        persistentVapid={persistentVapid}
+        onEnablePush={handleEnablePush}
+        onDisablePush={handleDisablePush}
       />
     </div>
   );

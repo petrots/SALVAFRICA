@@ -2,6 +2,10 @@ import { Timestamp } from 'firebase/firestore';
 
 export type PartnerKey = 'A' | 'B';
 
+export type NotificationType = 'deposit' | 'reaction' | 'milestone' | 'love_note';
+export type NotificationActorKey = PartnerKey | 'system';
+export type NotificationTargetKey = PartnerKey | 'all';
+
 export const MAIN_VAULT_ID = 'salvafrica-viaggio';
 export const INITIAL_CATEGORY_ID = 'cat-mance';
 export const INITIAL_CATEGORY_NAME = 'Mance';
@@ -43,6 +47,41 @@ export interface Contribution {
   updatedAt?: Timestamp;
 }
 
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  actorKey: NotificationActorKey;
+  actorName: string;
+  targetPartnerKey: NotificationTargetKey;
+  title: string;
+  body: string;
+  amount?: number;
+  contributionId?: string;
+  reactionEmoji?: string;
+  readByA: boolean;
+  readByB: boolean;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+export interface NotificationPreferences {
+  notifyDeposits: boolean;
+  notifyReactions: boolean;
+  notifyMilestones: boolean;
+  notifyLoveNote: boolean;
+}
+
+export interface PushSubscriptionRecord extends NotificationPreferences {
+  id: string;
+  partnerKey: PartnerKey;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  deviceLabel: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
 export interface Milestone {
   percent: number;
   label: string;
@@ -70,4 +109,7 @@ export const APP_LIMITS = {
   sourceTagMax: 50,
   categoryNameMax: 50,
   contributionNoteMax: 200,
+  notificationTitleMax: 100,
+  notificationBodyMax: 240,
+  deviceLabelMax: 80,
 } as const;

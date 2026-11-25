@@ -91,6 +91,61 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidNotification(data) {
+      return data.keys().hasAll([
+          'id', 'type', 'actorKey', 'actorName', 'targetPartnerKey',
+          'title', 'body', 'readByA', 'readByB', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'type', 'actorKey', 'actorName', 'targetPartnerKey',
+          'title', 'body', 'amount', 'contributionId', 'reactionEmoji',
+          'readByA', 'readByB', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id.size() <= 64
+        && data.type is string && (
+          data.type == 'deposit' || data.type == 'reaction' || data.type == 'milestone' || data.type == 'love_note'
+        )
+        && data.actorKey is string && (data.actorKey == 'A' || data.actorKey == 'B' || data.actorKey == 'system')
+        && data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 40
+        && data.targetPartnerKey is string && (
+          data.targetPartnerKey == 'A' || data.targetPartnerKey == 'B' || data.targetPartnerKey == 'all'
+        )
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 100
+        && data.body is string && data.body.size() >= 1 && data.body.size() <= 240
+        && (!('amount' in data) || (data.amount is number && data.amount > 0 && data.amount <= 100000))
+        && (!('contributionId' in data) || (isValidId(data.contributionId) && data.contributionId.size() <= 64))
+        && (!('reactionEmoji' in data) || (data.reactionEmoji is string && data.reactionEmoji.size() >= 1 && data.reactionEmoji.size() <= 16))
+        && data.readByA is bool
+        && data.readByB is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPushSubscription(data) {
+      return data.keys().hasAll([
+          'id', 'partnerKey', 'endpoint', 'p256dh', 'auth', 'deviceLabel',
+          'notifyDeposits', 'notifyReactions', 'notifyMilestones', 'notifyLoveNote',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'partnerKey', 'endpoint', 'p256dh', 'auth', 'deviceLabel',
+          'notifyDeposits', 'notifyReactions', 'notifyMilestones', 'notifyLoveNote',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id.size() <= 64
+        && data.partnerKey is string && (data.partnerKey == 'A' || data.partnerKey == 'B')
+        && data.endpoint is string && data.endpoint.size() >= 10 && data.endpoint.size() <= 1000 && data.endpoint.matches('^https://.+')
+        && data.p256dh is string && data.p256dh.size() >= 1 && data.p256dh.size() <= 256
+        && data.auth is string && data.auth.size() >= 1 && data.auth.size() <= 128
+        && data.deviceLabel is string && data.deviceLabel.size() >= 1 && data.deviceLabel.size() <= 80
+        && data.notifyDeposits is bool
+        && data.notifyReactions is bool
+        && data.notifyMilestones is bool
+        && data.notifyLoveNote is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     match /vaults/{vaultId} {
       allow get: if isMainVault(vaultId);
       allow list: if false;
@@ -171,6 +226,63 @@ service cloud.firestore {
             ])
           );
         allow delete: if isMainVault(vaultId) && isValidId(contributionId) && parentVaultExists(vaultId);
+      }
+
+      match /notifications/{notificationId} {
+        allow get: if isMainVault(vaultId) && isValidId(notificationId) && parentVaultExists(vaultId);
+        allow list: if isMainVault(vaultId);
+        allow create: if isMainVault(vaultId)
+          && isValidId(notificationId)
+          && isValidNotification(incoming())
+          && incoming().id == notificationId
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && parentVaultExists(vaultId);
+        allow update: if isMainVault(vaultId)
+          && isValidId(notificationId)
+          && isValidNotification(incoming())
+          && parentVaultExists(vaultId)
+          && incoming().id == existing().id
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly(['readByA', 'updatedAt'])
+            ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['readByB', 'updatedAt'])
+            ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['readByA', 'readByB', 'updatedAt'])
+          );
+        allow delete: if isMainVault(vaultId) && isValidId(notificationId) && parentVaultExists(vaultId);
+      }
+
+      match /pushSubscriptions/{subscriptionId} {
+        allow get: if isMainVault(vaultId) && isValidId(subscriptionId) && parentVaultExists(vaultId);
+        allow list: if isMainVault(vaultId);
+        allow create: if isMainVault(vaultId)
+          && isValidId(subscriptionId)
+          && isValidPushSubscription(incoming())
+          && incoming().id == subscriptionId
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && parentVaultExists(vaultId);
+        allow update: if isMainVault(vaultId)
+          && isValidId(subscriptionId)
+          && isValidPushSubscription(incoming())
+          && parentVaultExists(vaultId)
+          && incoming().id == existing().id
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'partnerKey', 'notifyDeposits', 'notifyReactions', 'notifyMilestones', 'notifyLoveNote', 'deviceLabel', 'updatedAt'
+            ])
+            ||
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'endpoint', 'p256dh', 'auth', 'partnerKey', 'deviceLabel',
+              'notifyDeposits', 'notifyReactions', 'notifyMilestones', 'notifyLoveNote', 'updatedAt'
+            ])
+          );
+        allow delete: if isMainVault(vaultId) && isValidId(subscriptionId) && parentVaultExists(vaultId);
       }
     }
   }

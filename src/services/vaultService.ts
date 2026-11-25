@@ -289,7 +289,7 @@ export async function addContribution(
     categoryId?: string;
     note: string;
   }
-): Promise<void> {
+): Promise<string> {
   const contributionId = `dep-${makeId()}`.slice(0, 48);
   const amount = Math.min(100000, Math.max(0.01, Math.round(data.amount * 100) / 100));
   const partnerName = clampString(data.partnerName, APP_LIMITS.partnerNameMax) || 'Partner';
@@ -328,6 +328,7 @@ export async function addContribution(
 
     batch.set(contribRef, payload);
     await batch.commit();
+    return contributionId;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, contributionPath);
   }

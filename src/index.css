@@ -6,16 +6,58 @@
   --font-display: "Fraunces", Georgia, serif;
   --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
 
+  /* Brand & Editorial Palette */
   --color-sand-canvas: #FAF6F0;
   --color-sand-surface: #F2ECE3;
   --color-sand-border: #E6DDD1;
+  --color-night-canvas: #0E1F2E;
+  --color-night-surface: #162D42;
+  --color-night-hover: #1E3952;
+  --color-night-border: #264561;
+
   --color-ocean-ink: #122638;
   --color-ocean-slate: #5B6B79;
+  --color-night-slate: #9DB0C0;
+
   --color-coral-sunset: #E86A52;
   --color-coral-deep: #D1533C;
   --color-ocean-blue: #1A6B8A;
+  --color-ocean-blue-hover: #14556F;
   --color-ocean-light: #2D8FB3;
   --color-sun-gold: #E09F3E;
+  --color-sun-gold-ink: #85580D;
+  --color-sun-gold-bright: #F7C76E;
+}
+
+:root {
+  --ds-canvas: #FAF6F0;
+  --ds-surface: #F2ECE3;
+  --ds-surface-hover: #E6DDD1;
+  --ds-border: #E6DDD1;
+  --ds-ink: #122638;
+  --ds-ink-muted: #5B6B79;
+  --ds-coral: #E86A52;
+  --ds-coral-strong: #D1533C;
+  --ds-teal: #1A6B8A;
+  --ds-gold: #85580D;
+
+  --ds-duration-fast: 150ms;
+  --ds-duration-normal: 220ms;
+  --ds-duration-smooth: 280ms;
+  --ds-ease-editorial: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html.dark {
+  --ds-canvas: #0E1F2E;
+  --ds-surface: #162D42;
+  --ds-surface-hover: #1E3952;
+  --ds-border: #264561;
+  --ds-ink: #FAF6F0;
+  --ds-ink-muted: #9DB0C0;
+  --ds-coral: #E86A52;
+  --ds-coral-strong: #E86A52;
+  --ds-teal: #2D8FB3;
+  --ds-gold: #F7C76E;
 }
 
 @layer base {
@@ -39,20 +81,103 @@
 
   html {
     font-family: var(--font-sans);
-    background-color: #FAF6F0;
-    color: #122638;
+    background-color: var(--ds-canvas);
+    color: var(--ds-ink);
     -webkit-tap-highlight-color: transparent;
   }
 
   html.dark {
-    background-color: #0E1F2E;
-    color: #FAF6F0;
     color-scheme: dark;
   }
 
-  h1, h2, .font-display {
+  h1,
+  h2,
+  .font-display {
     font-family: var(--font-display);
     text-wrap: balance;
+  }
+}
+
+@layer components {
+  /* Editorial Typography Hierarchy */
+  .ds-heading-page {
+    @apply font-display text-3xl sm:text-4xl font-semibold text-[#122638] dark:text-[#FAF6F0] tracking-tight leading-[1.1];
+  }
+
+  .ds-heading-section {
+    @apply font-display text-xl font-semibold text-[#122638] dark:text-[#FAF6F0] tracking-tight;
+  }
+
+  .ds-heading-sheet {
+    @apply font-display text-xl sm:text-2xl font-semibold text-[#122638] dark:text-[#FAF6F0] tracking-tight;
+  }
+
+  .ds-label {
+    @apply block text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0];
+  }
+
+  .ds-caption {
+    @apply text-xs text-[#5B6B79] dark:text-[#9DB0C0];
+  }
+
+  /* Hairline Dividers */
+  .ds-divider {
+    @apply border-[#E6DDD1] dark:border-[#264561];
+  }
+
+  /* Editorial Underline Input (16px base prevents iOS Safari auto-zoom) */
+  .ds-input-underline {
+    @apply w-full min-w-0 min-h-[44px] bg-transparent border-b border-[#E6DDD1] dark:border-[#264561] focus:border-[#1A6B8A] dark:focus:border-[#2D8FB3] py-2 text-base text-[#122638] dark:text-[#FAF6F0] placeholder:text-[#5B6B79]/60 dark:placeholder:text-[#9DB0C0]/50 focus:outline-none transition-colors duration-150;
+  }
+
+  .ds-input-underline-coral {
+    @apply w-full min-w-0 min-h-[44px] bg-transparent border-b border-[#E6DDD1] dark:border-[#264561] focus:border-[#E86A52] dark:focus:border-[#E86A52] py-2 text-base text-[#122638] dark:text-[#FAF6F0] placeholder:text-[#5B6B79]/60 dark:placeholder:text-[#9DB0C0]/50 focus:outline-none transition-colors duration-150;
+  }
+
+  /* Unified Button Primitives (min 44px touch hitbox on iPhone) */
+  .ds-btn-primary {
+    @apply min-h-[44px] px-4 rounded-full bg-[#E86A52] hover:bg-[#D1533C] active:scale-[0.98] text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] disabled:opacity-45 disabled:pointer-events-none whitespace-nowrap;
+  }
+
+  .ds-btn-dark {
+    @apply min-h-[44px] px-4 rounded-full bg-[#122638] dark:bg-[#E86A52] hover:bg-[#1C3852] dark:hover:bg-[#D1533C] active:scale-[0.98] text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] disabled:opacity-45 disabled:pointer-events-none whitespace-nowrap;
+  }
+
+  .ds-btn-teal {
+    @apply min-h-[44px] px-4 rounded-full bg-[#1A6B8A] hover:bg-[#14556F] active:scale-[0.98] text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E86A52] disabled:opacity-45 disabled:pointer-events-none whitespace-nowrap;
+  }
+
+  .ds-btn-secondary {
+    @apply min-h-[44px] px-4 rounded-full bg-[#F2ECE3] dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] hover:bg-[#E6DDD1]/80 dark:hover:bg-[#1E3952] active:scale-[0.98] text-xs font-semibold text-[#122638] dark:text-[#FAF6F0] inline-flex items-center justify-center gap-1.5 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] disabled:opacity-45 disabled:pointer-events-none whitespace-nowrap;
+  }
+
+  .ds-btn-ghost {
+    @apply min-h-[44px] px-3 rounded-full text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0] hover:bg-[#F2ECE3]/70 dark:hover:bg-[#162D42] active:scale-[0.98] inline-flex items-center justify-center gap-1.5 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] disabled:opacity-45 disabled:pointer-events-none whitespace-nowrap;
+  }
+
+  .ds-btn-icon {
+    @apply min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0] hover:bg-[#F2ECE3] dark:hover:bg-[#162D42] active:bg-[#E6DDD1] dark:active:bg-[#1E3952] transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] disabled:opacity-45 disabled:pointer-events-none;
+  }
+
+  /* Bottom Sheet Architecture */
+  .ds-sheet-backdrop {
+    @apply fixed inset-0 bg-[#122638]/55 dark:bg-[#07111A]/80 backdrop-blur-xs;
+  }
+
+  .ds-sheet-panel {
+    @apply relative z-10 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl bg-[#FAF6F0] dark:bg-[#0E1F2E] border-t sm:border border-[#E6DDD1] dark:border-[#264561] flex flex-col overflow-hidden;
+  }
+
+  .ds-sheet-handle {
+    @apply sm:hidden w-10 h-1 bg-[#E6DDD1] dark:bg-[#264561] rounded-full mx-auto mt-2.5 shrink-0;
+  }
+
+  .ds-sheet-header {
+    @apply shrink-0 flex items-center justify-between px-5 sm:px-6 pt-3 pb-3 border-b border-[#E6DDD1] dark:border-[#264561] gap-3;
+  }
+
+  .ds-sheet-body {
+    @apply flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain px-5 sm:px-6;
   }
 }
 
@@ -93,7 +218,8 @@
 }
 
 @keyframes sun-float {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0px);
   }
   50% {

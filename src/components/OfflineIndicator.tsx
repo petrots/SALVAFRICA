@@ -11,9 +11,9 @@ export const OfflineIndicator: React.FC = () => {
     <div
       role="status"
       aria-live="polite"
-      className="fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-full bg-[#132638] dark:bg-[#1E3952] dark:border dark:border-[#264561] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F5] shadow-md"
+      className="fixed top-[max(4rem,calc(env(safe-area-inset-top)+3.75rem))] left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-full bg-[#122638] dark:bg-[#162D42] border border-[#264561]/40 dark:border-[#264561] px-3.5 py-1.5 text-xs font-medium text-[#FAF6F0] shadow-md whitespace-nowrap"
     >
-      <WifiOff className="w-3.5 h-3.5 text-[#E86A52]" />
+      <WifiOff className="w-3.5 h-3.5 text-[#E86A52] shrink-0" />
       <span>Modalità offline — dati locali in attesa di rete</span>
     </div>
   );

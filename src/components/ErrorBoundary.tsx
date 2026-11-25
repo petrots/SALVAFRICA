@@ -40,19 +40,21 @@ export class ErrorBoundary extends React.Component<
       }
 
       return (
-        <div className="min-h-screen bg-[#FAF8F5] text-[#132638] flex items-center justify-center p-6">
-          <div className="w-full max-w-md rounded-3xl bg-white border border-[#E8E2D9] p-6 text-center shadow-sm">
-            <h2 className="font-display text-2xl font-semibold text-[#132638]">
+        <div className="min-h-screen bg-[#FAF6F0] dark:bg-[#0E1F2E] text-[#122638] dark:text-[#FAF6F0] flex items-center justify-center p-6">
+          <div className="w-full max-w-md rounded-3xl bg-[#F2ECE3] dark:bg-[#162D42] border border-[#E6DDD1] dark:border-[#264561] p-6 text-center">
+            <h2 className="font-display text-2xl font-semibold text-[#122638] dark:text-[#FAF6F0]">
               Piccola onda imprevista
             </h2>
-            <p className="mt-2 text-sm text-[#5C6B7A] leading-relaxed">{friendlyMsg}</p>
+            <p className="mt-2 text-sm text-[#5B6B79] dark:text-[#9DB0C0] leading-relaxed">
+              {friendlyMsg}
+            </p>
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="mt-5 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[#E86A52] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#D1533C] transition-colors"
+              className="mt-5 ds-btn-primary px-5 text-sm"
             >
               <RefreshCw className="w-4 h-4" />
-              Ricarica l’app
+              <span>Ricarica l’app</span>
             </button>
           </div>
         </div>

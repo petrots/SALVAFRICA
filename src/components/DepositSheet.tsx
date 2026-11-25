@@ -1,7 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, Loader2, Plus, X } from 'lucide-react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { addContribution, createCategory } from '../services/vaultService';
+import {
+  DS_DURATION,
+  DS_EASE,
+  DS_PARTNER_STYLES,
+  getSheetBackdropMotion,
+  getSheetPanelMotion,
+} from '../styles/designSystem';
 import {
   APP_LIMITS,
   Category,
@@ -12,6 +19,14 @@ import { formatEuro } from '../utils/format';
 import { triggerHaptic } from '../utils/haptics';
 import { getSourceIcon } from '../utils/sourceIcons';
 
+export interface DepositSuccessMeta {
+  contributionId: string;
+  partnerKey: PartnerKey;
+  partnerName: string;
+  categoryName: string;
+  note: string;
+}
+
 interface DepositSheetProps {
   isOpen: boolean;
   onClose: () => void;
@@ -19,8 +34,10 @@ interface DepositSheetProps {
   categories: Category[];
   activeCategories: Category[];
   categoriesLoaded: boolean;
+  currentPartnerKey: PartnerKey;
+  onChangePartnerKey: (key: PartnerKey) => void;
   onDepositStart?: () => void;
-  onSuccessDeposit: (addedAmount: number) => boolean | void;
+  onSuccessDeposit: (addedAmount: number, meta: DepositSuccessMeta) => boolean | void;
 }
 
 const QUICK_AMOUNTS = [5, 10, 20, 50];
@@ -56,9 +73,15 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
   categories,
   activeCategories,
   categoriesLoaded,
+  currentPartnerKey,
+  onChangePartnerKey,
   onDepositStart,
   onSuccessDeposit,
 }) => {
+  const prefersReducedMotion = useReducedMotion();
+  const backdropMotion = getSheetBackdropMotion(prefersReducedMotion);
+  const panelMotion = getSheetPanelMotion(prefersReducedMotion);
+
   const [amountStr, setAmountStr] = useState('20');
   const [amountTouched, setAmountTouched] = useState(false);
   const [partnerKey, setPartnerKey] = useState<PartnerKey>('A');
@@ -110,12 +133,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
     setSelectedCategoryId(activeCategories[0]?.id ?? '');
     setNote('');
     setKeyboardOpen(false);
-    try {
-      const saved = window.localStorage.getItem('salvafrica_partner_key');
-      setPartnerKey(saved === 'B' ? 'B' : 'A');
-    } catch {
-      setPartnerKey('A');
-    }
+    setPartnerKey(currentPartnerKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
@@ -220,11 +238,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
   const handleSelectPartner = (key: PartnerKey) => {
     dismissKeyboard();
     setPartnerKey(key);
-    try {
-      window.localStorage.setItem('salvafrica_partner_key', key);
-    } catch {
-      // Ignore storage restrictions
-    }
+    onChangePartnerKey(key);
   };
 
   const handleSelectCategory = (cat: Category) => {
@@ -308,15 +322,11 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
     setSubmitting(true);
 
     const partnerName = partnerKey === 'A' ? vault.partnerAName : vault.partnerBName;
-    try {
-      window.localStorage.setItem('salvafrica_partner_key', partnerKey);
-    } catch {
-      // Ignore storage restrictions
-    }
+    onChangePartnerKey(partnerKey);
 
     try {
       onDepositStart?.();
-      await addContribution(vault.id, {
+      const contributionId = await addContribution(vault.id, {
         amount: parsedAmount,
         partnerKey,
         partnerName,
@@ -324,7 +334,13 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
         categoryId: selectedCategory.id,
         note,
       });
-      const reachedMilestone = onSuccessDeposit(parsedAmount);
+      const reachedMilestone = onSuccessDeposit(parsedAmount, {
+        contributionId,
+        partnerKey,
+        partnerName,
+        categoryName: selectedCategory.name,
+        note: note.trim(),
+      });
       if (!reachedMilestone) {
         triggerHaptic('success');
       }
@@ -362,28 +378,22 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
           }`}
         >
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
+            {...backdropMotion}
             onClick={() => {
               dismissKeyboard();
               onClose();
             }}
-            className="fixed inset-0 bg-[#122638]/50 dark:bg-[#07111A]/80 backdrop-blur-xs"
+            className="ds-sheet-backdrop"
           />
 
           <motion.div
-            initial={{ y: '100%', opacity: 0.88 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: '100%', opacity: 0.88 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            {...panelMotion}
             style={{
               maxHeight: viewportMetrics
                 ? `${Math.max(300, viewportMetrics.height - 12)}px`
-                : '92dvh',
+                : '90dvh',
             }}
-            className="relative z-10 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl bg-[#FAF6F0] dark:bg-[#0E1F2E] border-t sm:border border-[#E6DDD1] dark:border-[#264561] flex flex-col overflow-hidden"
+            className="ds-sheet-panel"
             role="dialog"
             aria-modal="true"
             aria-labelledby="deposit-sheet-title"
@@ -391,19 +401,19 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
             {/* Drag handle & Editorial Header */}
             <div
               onClick={dismissKeyboard}
-              className="shrink-0 border-b border-[#E6DDD1] dark:border-[#264561]"
+              className="shrink-0 border-b ds-divider"
             >
-              <div className="sm:hidden w-10 h-1 bg-[#E6DDD1] dark:bg-[#264561] rounded-full mx-auto mt-2.5" />
+              <div className="ds-sheet-handle" />
 
               <div className="flex items-center justify-between px-5 sm:px-6 pt-3 pb-3 gap-3">
                 <div className="min-w-0">
                   <h2
                     id="deposit-sheet-title"
-                    className="font-display text-xl sm:text-2xl font-semibold text-[#122638] dark:text-[#FAF6F0] tracking-tight"
+                    className="ds-heading-sheet"
                   >
                     Nuovo versamento extra
                   </h2>
-                  <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] truncate">
+                  <p className="ds-caption truncate">
                     Solo entrate extra esterne (zero stipendio e zero risparmi)
                   </p>
                 </div>
@@ -414,7 +424,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={dismissKeyboard}
-                      className="min-h-[40px] px-3 rounded-full bg-[#F2ECE3] dark:bg-[#162D42] text-xs font-semibold text-[#122638] dark:text-[#FAF6F0] inline-flex items-center gap-1 hover:bg-[#E6DDD1] dark:hover:bg-[#1E3952] transition-colors"
+                      className="min-h-[44px] px-3 rounded-full bg-[#F2ECE3] dark:bg-[#162D42] text-xs font-semibold text-[#122638] dark:text-[#FAF6F0] inline-flex items-center gap-1 hover:bg-[#E6DDD1] dark:hover:bg-[#1E3952] transition-colors duration-150"
                     >
                       <span>Fine</span>
                       <ChevronDown className="w-3.5 h-3.5" />
@@ -427,7 +437,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                       onClose();
                     }}
                     aria-label="Chiudi"
-                    className="min-h-[44px] min-w-[44px] -mr-2 flex items-center justify-center rounded-full text-[#5B6B79] dark:text-[#9DB0C0] hover:bg-[#F2ECE3] dark:hover:bg-[#162D42] hover:text-[#122638] dark:hover:text-[#FAF6F0] transition-colors"
+                    className="ds-btn-icon -mr-2"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -437,9 +447,12 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
 
             {confirmedDeposit !== null ? (
               <motion.div
-                initial={{ opacity: 0, scale: 0.94 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.94 }}
+                animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+                transition={{
+                  duration: prefersReducedMotion ? 0.12 : DS_DURATION.normal,
+                  ease: DS_EASE,
+                }}
                 className="px-6 py-12 pb-[max(2rem,env(safe-area-inset-bottom))] flex flex-col items-center text-center space-y-3"
               >
                 <span className="w-12 h-12 rounded-full bg-[#E86A52] text-white flex items-center justify-center">
@@ -468,7 +481,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                 className="flex-1 min-h-0 flex flex-col"
               >
                 {/* Scrollable Editorial Body */}
-                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain px-5 sm:px-6 py-4 space-y-5">
+                <div className="ds-sheet-body py-4 space-y-5">
                   {errorMsg && (
                     <div
                       role="alert"
@@ -483,16 +496,16 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                     <div className="flex items-baseline justify-between gap-2">
                       <label
                         htmlFor="deposit-amount-input"
-                        className="text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0]"
+                        className="ds-label"
                       >
                         Importo guadagnato
                       </label>
-                      <span className="text-xs text-[#5B6B79] dark:text-[#9DB0C0]">
+                      <span className="ds-caption">
                         Es. 2,50 €
                       </span>
                     </div>
 
-                    <div className="flex items-baseline justify-between gap-3 border-b-2 border-[#E6DDD1] dark:border-[#264561] focus-within:border-[#E86A52] dark:focus-within:border-[#E86A52] pb-2 transition-colors">
+                    <div className="flex items-baseline justify-between gap-3 border-b-2 ds-divider focus-within:border-[#E86A52] dark:focus-within:border-[#E86A52] pb-2 transition-colors duration-150">
                       <input
                         ref={amountInputRef}
                         id="deposit-amount-input"
@@ -531,7 +544,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                             type="button"
                             onClick={() => handleQuickAdd(val)}
                             aria-pressed={active}
-                            className={`min-h-[44px] rounded-xl text-sm font-semibold tabular-nums transition-colors ${
+                            className={`min-h-[44px] rounded-xl text-sm font-semibold tabular-nums active:scale-[0.98] transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] ${
                               active
                                 ? 'bg-[#122638] dark:bg-[#E86A52] text-white'
                                 : 'bg-[#F2ECE3] dark:bg-[#162D42] text-[#122638] dark:text-[#FAF6F0] hover:bg-[#E6DDD1]/80 dark:hover:bg-[#1E3952]'
@@ -545,8 +558,8 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                   </div>
 
                   {/* 2. Partner Selector */}
-                  <div className="pt-4 border-t border-[#E6DDD1] dark:border-[#264561]">
-                    <label className="block text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] mb-2.5">
+                  <div className="pt-4 border-t ds-divider">
+                    <label className="ds-label mb-2.5">
                       Chi sta versando?
                     </label>
                     <div className="grid grid-cols-2 gap-2.5">
@@ -554,16 +567,16 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                         type="button"
                         onClick={() => handleSelectPartner('A')}
                         aria-pressed={partnerKey === 'A'}
-                        className={`min-h-[48px] rounded-xl px-3.5 text-sm font-semibold transition-colors flex items-center justify-between gap-2 ${
+                        className={`min-h-[48px] rounded-xl px-3.5 text-sm font-semibold active:scale-[0.98] transition-all duration-150 flex items-center justify-between gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] ${
                           partnerKey === 'A'
-                            ? 'bg-[#E86A52] text-white'
-                            : 'bg-[#F2ECE3]/75 dark:bg-[#162D42] text-[#122638] dark:text-[#FAF6F0] border border-[#E6DDD1] dark:border-[#264561] hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952]'
+                            ? DS_PARTNER_STYLES.A.activeSegment
+                            : 'bg-[#F2ECE3]/75 dark:bg-[#162D42] text-[#122638] dark:text-[#FAF6F0] border ds-divider hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952]'
                         }`}
                       >
                         <span className="flex items-center gap-2 min-w-0">
                           <span
                             className={`w-2 h-2 rounded-full shrink-0 ${
-                              partnerKey === 'A' ? 'bg-white' : 'bg-[#E86A52]'
+                              partnerKey === 'A' ? 'bg-white' : DS_PARTNER_STYLES.A.dot
                             }`}
                           />
                           <span className="truncate">{vault.partnerAName}</span>
@@ -577,18 +590,16 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                         type="button"
                         onClick={() => handleSelectPartner('B')}
                         aria-pressed={partnerKey === 'B'}
-                        className={`min-h-[48px] rounded-xl px-3.5 text-sm font-semibold transition-colors flex items-center justify-between gap-2 ${
+                        className={`min-h-[48px] rounded-xl px-3.5 text-sm font-semibold active:scale-[0.98] transition-all duration-150 flex items-center justify-between gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E86A52] ${
                           partnerKey === 'B'
-                            ? 'bg-[#1A6B8A] text-white'
-                            : 'bg-[#F2ECE3]/75 dark:bg-[#162D42] text-[#122638] dark:text-[#FAF6F0] border border-[#E6DDD1] dark:border-[#264561] hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952]'
+                            ? DS_PARTNER_STYLES.B.activeSegment
+                            : 'bg-[#F2ECE3]/75 dark:bg-[#162D42] text-[#122638] dark:text-[#FAF6F0] border ds-divider hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952]'
                         }`}
                       >
                         <span className="flex items-center gap-2 min-w-0">
                           <span
                             className={`w-2 h-2 rounded-full shrink-0 ${
-                              partnerKey === 'B'
-                                ? 'bg-white'
-                                : 'bg-[#1A6B8A] dark:bg-[#2D8FB3]'
+                              partnerKey === 'B' ? 'bg-white' : DS_PARTNER_STYLES.B.dot
                             }`}
                           />
                           <span className="truncate">{vault.partnerBName}</span>
@@ -601,13 +612,13 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                   </div>
 
                   {/* 3. Custom Category Selector (Ordered by Last Used) + Inline Creation */}
-                  <div className="pt-4 border-t border-[#E6DDD1] dark:border-[#264561] space-y-2.5">
-                    <label className="block text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0]">
+                  <div className="pt-4 border-t ds-divider space-y-2.5">
+                    <label className="ds-label">
                       Da quale attività esterna arrivano?
                     </label>
 
                     {!categoriesLoaded && displayedCategories.length === 0 ? (
-                      <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] py-2">
+                      <p className="ds-caption py-2">
                         Caricamento categorie...
                       </p>
                     ) : (
@@ -620,10 +631,10 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                               type="button"
                               onClick={() => handleSelectCategory(cat)}
                               aria-pressed={selected}
-                              className={`min-h-[44px] max-w-full rounded-xl px-3.5 py-2 text-xs text-left transition-colors inline-flex items-center gap-2 ${
+                              className={`min-h-[44px] max-w-full rounded-xl px-3.5 py-2 text-xs text-left active:scale-[0.98] transition-all duration-150 inline-flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] ${
                                 selected
                                   ? 'bg-[#122638] dark:bg-[#1A6B8A] text-white font-semibold'
-                                  : 'bg-[#F2ECE3]/75 dark:bg-[#162D42] text-[#122638] dark:text-[#FAF6F0] font-medium border border-[#E6DDD1] dark:border-[#264561] hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952]'
+                                  : 'bg-[#F2ECE3]/75 dark:bg-[#162D42] text-[#122638] dark:text-[#FAF6F0] font-medium border ds-divider hover:bg-[#F2ECE3] dark:hover:bg-[#1E3952]'
                               }`}
                             >
                               <span
@@ -644,7 +655,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                           type="button"
                           onClick={handleOpenNewCategory}
                           aria-expanded={creatingCategory}
-                          className={`min-h-[44px] rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors inline-flex items-center gap-1.5 border border-dashed ${
+                          className={`min-h-[44px] rounded-xl px-3.5 py-2 text-xs font-semibold active:scale-[0.98] transition-all duration-150 inline-flex items-center gap-1.5 border border-dashed focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E86A52] ${
                             creatingCategory
                               ? 'border-[#E86A52] bg-[#E86A52]/12 text-[#D1533C] dark:text-[#E86A52]'
                               : 'border-[#E86A52]/65 text-[#D1533C] dark:text-[#E86A52] hover:bg-[#E86A52]/10'
@@ -684,14 +695,14 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                             enterKeyHint="done"
                             placeholder="Es. Ripetizioni, Vinted, Lavoretto..."
                             aria-label="Nome della nuova categoria"
-                            className="flex-1 min-w-0 min-h-[44px] bg-transparent border-b-2 border-[#E6DDD1] dark:border-[#264561] focus:border-[#E86A52] py-1.5 text-base text-[#122638] dark:text-[#FAF6F0] placeholder:text-[#5B6B79]/60 dark:placeholder:text-[#9DB0C0]/50 focus:outline-none scroll-mb-6"
+                            className="flex-1 ds-input-underline-coral scroll-mb-6"
                           />
 
                           <button
                             type="button"
                             onClick={() => void handleCreateCategory()}
                             disabled={creatingCategoryLoading}
-                            className="min-h-[44px] px-4 rounded-full bg-[#122638] dark:bg-[#E86A52] text-xs font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50 shrink-0"
+                            className="ds-btn-dark shrink-0"
                           >
                             {creatingCategoryLoading ? 'Salvo...' : 'Crea'}
                           </button>
@@ -702,7 +713,7 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                               setCreatingCategory(false);
                               setCategoryError('');
                             }}
-                            className="min-h-[44px] px-2.5 text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0] shrink-0"
+                            className="ds-btn-ghost px-2.5 shrink-0"
                           >
                             Annulla
                           </button>
@@ -718,10 +729,10 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                   </div>
 
                   {/* 4. Optional Note */}
-                  <div className="pt-4 border-t border-[#E6DDD1] dark:border-[#264561] pb-1">
+                  <div className="pt-4 border-t ds-divider pb-1">
                     <label
                       htmlFor="deposit-note-input"
-                      className="block text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] mb-1"
+                      className="ds-label mb-1"
                     >
                       Dettaglio attività o dedica (opzionale)
                     </label>
@@ -735,17 +746,17 @@ export const DepositSheet: React.FC<DepositSheetProps> = ({
                       onFocus={handleInputFocus}
                       onBlur={handleInputBlur}
                       placeholder="Es. Serata ristorante · Per l’Africa"
-                      className="w-full min-h-[44px] bg-transparent border-b border-[#E6DDD1] dark:border-[#264561] focus:border-[#1A6B8A] dark:focus:border-[#2D8FB3] py-2 text-base text-[#122638] dark:text-[#FAF6F0] placeholder:text-[#5B6B79]/60 dark:placeholder:text-[#9DB0C0]/50 focus:outline-none transition-colors scroll-mb-6"
+                      className="ds-input-underline scroll-mb-6"
                     />
                   </div>
                 </div>
 
                 {/* Sticky Footer Save CTA (Always accessible above keyboard & safe area) */}
-                <div className="shrink-0 border-t border-[#E6DDD1] dark:border-[#264561] bg-[#FAF6F0] dark:bg-[#0E1F2E] px-5 sm:px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                <div className="shrink-0 border-t ds-divider bg-[#FAF6F0] dark:bg-[#0E1F2E] px-5 sm:px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                   <button
                     type="submit"
                     disabled={!isAmountValid || !selectedCategory || submitting}
-                    className="w-full min-h-[50px] rounded-full bg-[#E86A52] px-5 py-3 text-sm font-semibold text-white hover:bg-[#D1533C] active:scale-[0.99] transition-all disabled:opacity-45 disabled:pointer-events-none flex items-center justify-center gap-2"
+                    className="w-full min-h-[50px] ds-btn-primary px-5 py-3 text-sm"
                   >
                     {submitting ? (
                       <>

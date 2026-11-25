@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowRight, Pencil } from 'lucide-react';
 import { updateLoveNote } from '../services/vaultService';
+import { DS_PARTNER_STYLES } from '../styles/designSystem';
 import { APP_LIMITS, Category, Contribution, Vault } from '../types';
 import { resolveContributionCategoryLabel } from '../utils/categories';
 import { formatDateTime, formatEuro } from '../utils/format';
@@ -20,6 +21,7 @@ interface DashboardTabProps {
   celebratedMilestoneEvent: { key: number; index: number } | null;
   onOpenDeposit: () => void;
   onNavigateFeed: () => void;
+  onLoveNoteUpdated?: (newNote: string) => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -35,6 +37,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   celebratedMilestoneEvent,
   onOpenDeposit,
   onNavigateFeed,
+  onLoveNoteUpdated,
 }) => {
   const [editingNote, setEditingNote] = useState(false);
   const [noteDraft, setNoteDraft] = useState(vault.loveNote);
@@ -46,10 +49,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   const handleSaveNote = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleaned = noteDraft.trim();
+    const changed = cleaned !== (vault.loveNote || '').trim();
     setSavingNote(true);
     try {
       await updateLoveNote(vault.id, noteDraft);
       setEditingNote(false);
+      if (changed && cleaned) {
+        onLoveNoteUpdated?.(cleaned);
+      }
     } finally {
       setSavingNote(false);
     }
@@ -71,7 +79,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       {/* Editorial Pull-Quote Note (Hairline Dividers, Zero Card) */}
       <section
         aria-label="Nota di viaggio"
-        className="border-y border-[#E6DDD1] dark:border-[#264561] py-3.5 sm:py-4"
+        className="border-y ds-divider py-3.5 sm:py-4"
       >
         {editingNote ? (
           <form
@@ -84,14 +92,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               value={noteDraft}
               onChange={(e) => setNoteDraft(e.target.value)}
               placeholder="Scrivi un pensiero o motto per il viaggio..."
-              className="flex-1 min-h-[44px] border-b border-[#1A6B8A] bg-transparent px-1 text-base text-[#122638] dark:text-[#FAF6F0] focus:outline-none"
+              className="flex-1 ds-input-underline px-1"
               autoFocus
             />
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="submit"
                 disabled={savingNote}
-                className="min-h-[44px] px-4 rounded-full bg-[#122638] dark:bg-[#E86A52] text-xs font-semibold text-white hover:bg-[#1C3952] dark:hover:bg-[#D1533C]"
+                className="ds-btn-dark"
               >
                 {savingNote ? 'Salvo...' : 'Salva'}
               </button>
@@ -101,7 +109,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   setEditingNote(false);
                   setNoteDraft(vault.loveNote);
                 }}
-                className="min-h-[44px] px-3 text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0]"
+                className="ds-btn-ghost"
               >
                 Annulla
               </button>
@@ -122,7 +130,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 setEditingNote(true);
               }}
               aria-label="Modifica bigliettino"
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0] transition-colors shrink-0"
+              className="ds-btn-icon -mr-2 shrink-0"
             >
               <Pencil className="w-4 h-4" />
             </button>
@@ -135,10 +143,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         {/* 1. Contributo di coppia (Clean Typography & Slim Split Bar) */}
         <section className="lg:col-span-5 space-y-4">
           <div className="flex items-baseline justify-between gap-4">
-            <h2 className="font-display text-xl font-semibold text-[#122638] dark:text-[#FAF6F0]">
+            <h2 className="ds-heading-section">
               Contributo di coppia
             </h2>
-            <span className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] tabular-nums">
+            <span className="ds-caption tabular-nums">
               {contributions.length}{' '}
               {contributions.length === 1 ? 'entrata' : 'entrate'}
             </span>
@@ -147,7 +155,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           <div className="grid grid-cols-2 gap-6 pt-1">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#E86A52] shrink-0" />
+                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${DS_PARTNER_STYLES.A.dot}`} />
                 <span className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0] truncate">
                   {vault.partnerAName}
                 </span>
@@ -162,7 +170,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#1A6B8A] dark:bg-[#2D8FB3] shrink-0" />
+                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${DS_PARTNER_STYLES.B.dot}`} />
                 <span className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0] truncate">
                   {vault.partnerBName}
                 </span>
@@ -170,7 +178,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <p className="font-display text-2xl sm:text-3xl font-semibold tabular-nums text-[#122638] dark:text-[#FAF6F0]">
                 {formatEuro(partnerBTotal)}
               </p>
-              <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] tabular-nums">
+              <p className="ds-caption tabular-nums">
                 {shareB}% · {partnerBCount} extra
               </p>
             </div>
@@ -178,11 +186,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
           <div className="h-1.5 w-full rounded-full bg-[#E6DDD1] dark:bg-[#1E3952] overflow-hidden flex gap-0.5">
             <div
-              className="h-full bg-[#E86A52] rounded-l-full transition-all duration-500"
+              className="h-full bg-[#E86A52] rounded-l-full transition-all duration-300"
               style={{ width: `${shareA}%` }}
             />
             <div
-              className="h-full bg-[#1A6B8A] dark:bg-[#2D8FB3] rounded-r-full transition-all duration-500"
+              className="h-full bg-[#1A6B8A] dark:bg-[#2D8FB3] rounded-r-full transition-all duration-300"
               style={{ width: `${shareB}%` }}
             />
           </div>
@@ -191,14 +199,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         {/* 2. Ultime entrate extra (Borderless Hairline Ledger) */}
         <section className="lg:col-span-7 space-y-4">
           <div className="flex items-baseline justify-between gap-4">
-            <h2 className="font-display text-xl font-semibold text-[#122638] dark:text-[#FAF6F0]">
+            <h2 className="ds-heading-section">
               Ultime entrate extra
             </h2>
             {contributions.length > 0 && (
               <button
                 type="button"
                 onClick={onNavigateFeed}
-                className="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-semibold text-[#1A6B8A] dark:text-[#2D8FB3] hover:text-[#122638] dark:hover:text-[#FAF6F0] transition-colors whitespace-nowrap"
+                className="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-semibold text-[#1A6B8A] dark:text-[#2D8FB3] hover:text-[#122638] dark:hover:text-[#FAF6F0] transition-colors duration-150 whitespace-nowrap focus:outline-none focus-visible:underline"
               >
                 <span>Vedi tutte</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -207,17 +215,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
 
           {recentEntries.length === 0 ? (
-            <div className="border-t border-[#E6DDD1] dark:border-[#264561] pt-4 space-y-1.5">
+            <div className="border-t ds-divider pt-4 space-y-1.5">
               <p className="text-sm font-medium text-[#122638] dark:text-[#FAF6F0]">
                 SALVAFRICA è pronto per la prima entrata extra
               </p>
-              <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] leading-relaxed">
+              <p className="ds-caption leading-relaxed">
                 Vendite dell’usato, lavoretti, cashback, scommesse o monetine
                 trovate: registrate qui solo guadagni ed entrate esterne.
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-[#E6DDD1] dark:divide-[#264561] border-t border-[#E6DDD1] dark:border-[#264561]">
+            <div className="divide-y divide-[#E6DDD1] dark:divide-[#264561] border-t ds-divider">
               {recentEntries.map((entry) => {
                 const categoryLabel = resolveContributionCategoryLabel(
                   entry,
@@ -231,9 +239,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     <div className="flex items-center gap-3.5 min-w-0">
                       <span
                         className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                          entry.partnerKey === 'A'
-                            ? 'bg-[#E86A52]/12 dark:bg-[#E86A52]/20 text-[#D1533C] dark:text-[#E86A52]'
-                            : 'bg-[#1A6B8A]/12 dark:bg-[#2D8FB3]/20 text-[#1A6B8A] dark:text-[#2D8FB3]'
+                          DS_PARTNER_STYLES[entry.partnerKey].iconBadge
                         }`}
                       >
                         {getSourceIcon(categoryLabel)}

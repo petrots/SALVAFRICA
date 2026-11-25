@@ -175,6 +175,159 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "In-app activity notification synced across both partners with independent read states.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["deposit", "reaction", "milestone", "love_note"]
+        },
+        "actorKey": {
+          "type": "string",
+          "enum": ["A", "B", "system"]
+        },
+        "actorName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "targetPartnerKey": {
+          "type": "string",
+          "enum": ["A", "B", "all"]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "amount": {
+          "type": "number"
+        },
+        "contributionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "reactionEmoji": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "readByA": {
+          "type": "boolean"
+        },
+        "readByB": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "actorKey",
+        "actorName",
+        "targetPartnerKey",
+        "title",
+        "body",
+        "readByA",
+        "readByB",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PushSubscriptionRecord": {
+      "title": "PushSubscriptionRecord",
+      "description": "Web Push subscription registered by a partner device for OS/PWA notifications.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "partnerKey": {
+          "type": "string",
+          "enum": ["A", "B"]
+        },
+        "endpoint": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 1000,
+          "pattern": "^https://.+"
+        },
+        "p256dh": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "auth": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "deviceLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "notifyDeposits": {
+          "type": "boolean"
+        },
+        "notifyReactions": {
+          "type": "boolean"
+        },
+        "notifyMilestones": {
+          "type": "boolean"
+        },
+        "notifyLoveNote": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "partnerKey",
+        "endpoint",
+        "p256dh",
+        "auth",
+        "deviceLabel",
+        "notifyDeposits",
+        "notifyReactions",
+        "notifyMilestones",
+        "notifyLoveNote",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -195,6 +348,18 @@
         "$ref": "#/entities/Contribution"
       },
       "description": "External-activity deposit records belonging to the vault."
+    },
+    "/vaults/{vaultId}/notifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/NotificationItem"
+      },
+      "description": "Synced couple activity notifications with per-partner read flags."
+    },
+    "/vaults/{vaultId}/pushSubscriptions/{subscriptionId}": {
+      "schema": {
+        "$ref": "#/entities/PushSubscriptionRecord"
+      },
+      "description": "Web Push subscriptions for couple devices."
     }
   }
 }

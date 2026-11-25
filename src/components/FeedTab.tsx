@@ -1,11 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   deleteContribution,
   ReactionField,
   toggleContributionReaction,
 } from '../services/vaultService';
-import { Category, Contribution, Vault } from '../types';
+import { DS_DURATION, DS_EASE, DS_PARTNER_STYLES } from '../styles/designSystem';
+import { Category, Contribution, PartnerKey, Vault } from '../types';
 import { resolveContributionCategoryLabel } from '../utils/categories';
 import { formatDateTime, formatEuro } from '../utils/format';
 import { getSourceIcon } from '../utils/sourceIcons';
@@ -14,7 +16,13 @@ interface FeedTabProps {
   vault: Vault;
   contributions: Contribution[];
   categoriesById: Map<string, Category>;
+  currentPartnerKey: PartnerKey;
   onOpenDeposit: () => void;
+  onReactionAdded?: (
+    entry: Contribution,
+    reactionEmoji: string,
+    categoryLabel: string
+  ) => void;
 }
 
 const REACTIONS: Array<{ field: ReactionField; emoji: string; label: string }> = [
@@ -28,10 +36,37 @@ export const FeedTab: React.FC<FeedTabProps> = ({
   vault,
   contributions,
   categoriesById,
+  currentPartnerKey,
   onOpenDeposit,
+  onReactionAdded,
 }) => {
   const [filter, setFilter] = useState<'all' | 'A' | 'B'>('all');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const prefersReducedMotion = useReducedMotion();
+
+  // Track known contribution IDs so only genuinely new items trigger the slide-in entrance
+  const seenIdsRef = useRef<Set<string> | null>(null);
+  const hadContributionsRef = useRef(contributions.length > 0);
+  if (seenIdsRef.current === null) {
+    seenIdsRef.current = new Set(contributions.map((c) => c.id));
+  } else if (!hadContributionsRef.current && contributions.length > 1) {
+    for (const c of contributions) {
+      seenIdsRef.current.add(c.id);
+    }
+    hadContributionsRef.current = true;
+  }
+
+  useEffect(() => {
+    if (contributions.length > 0) {
+      hadContributionsRef.current = true;
+    }
+    if (!seenIdsRef.current) {
+      seenIdsRef.current = new Set();
+    }
+    for (const c of contributions) {
+      seenIdsRef.current.add(c.id);
+    }
+  }, [contributions]);
 
   const filtered = useMemo(() => {
     if (filter === 'all') return contributions;
@@ -44,7 +79,13 @@ export const FeedTab: React.FC<FeedTabProps> = ({
   );
 
   const handleToggleReaction = async (entry: Contribution, field: ReactionField) => {
+    const turningOn = !entry[field];
     await toggleContributionReaction(vault.id, entry, field);
+    if (turningOn && entry.partnerKey !== currentPartnerKey) {
+      const reaction = REACTIONS.find((r) => r.field === field);
+      const categoryLabel = resolveContributionCategoryLabel(entry, categoriesById);
+      onReactionAdded?.(entry, reaction?.emoji || '❤️', categoryLabel);
+    }
   };
 
   const handleDelete = async (entryId: string) => {
@@ -64,7 +105,7 @@ export const FeedTab: React.FC<FeedTabProps> = ({
             </span>
             <span className="tabular-nums">{formatEuro(filteredTotal)}</span>
           </p>
-          <h1 className="font-display text-3xl sm:text-4xl font-semibold text-[#122638] dark:text-[#FAF6F0] tracking-tight leading-[1.1]">
+          <h1 className="ds-heading-page">
             Diario dei versamenti
           </h1>
           <p className="text-xs sm:text-sm text-[#5B6B79] dark:text-[#9DB0C0] pt-0.5">
@@ -75,7 +116,7 @@ export const FeedTab: React.FC<FeedTabProps> = ({
         {/* Minimal Underlined Author Filter Tabs */}
         <nav
           aria-label="Filtra versamenti per autore"
-          className="flex items-center gap-6 sm:gap-8 border-b border-[#E6DDD1] dark:border-[#264561] overflow-x-auto"
+          className="flex items-center gap-6 sm:gap-8 border-b ds-divider overflow-x-auto"
         >
           <button
             type="button"
@@ -148,32 +189,50 @@ export const FeedTab: React.FC<FeedTabProps> = ({
           <button
             type="button"
             onClick={onOpenDeposit}
-            className="min-h-[44px] px-5 py-2.5 rounded-full bg-[#E86A52] text-sm font-semibold text-white hover:bg-[#D1533C] active:scale-[0.98] transition-all inline-flex items-center gap-2"
+            className="ds-btn-primary px-5 py-2.5 text-sm"
           >
             <Plus className="w-4 h-4 stroke-[2.25]" />
             <span>Nuovo versamento extra</span>
           </button>
         </div>
       ) : (
-        <div className="divide-y divide-[#E6DDD1] dark:divide-[#264561] border-b border-[#E6DDD1] dark:border-[#264561]">
-          {filtered.map((entry) => {
-            const isConfirming = confirmDeleteId === entry.id;
-            const categoryLabel = resolveContributionCategoryLabel(
-              entry,
-              categoriesById
-            );
-            return (
-              <article
-                key={entry.id}
-                className="py-4 sm:py-5 space-y-2 transition-colors"
-              >
+        <div className="divide-y divide-[#E6DDD1] dark:divide-[#264561] border-b ds-divider overflow-hidden">
+          <AnimatePresence initial={false}>
+            {filtered.map((entry) => {
+              const isConfirming = confirmDeleteId === entry.id;
+              const isNewEntry = !seenIdsRef.current?.has(entry.id);
+              const categoryLabel = resolveContributionCategoryLabel(
+                entry,
+                categoriesById
+              );
+              return (
+                <motion.article
+                  key={entry.id}
+                  layout={prefersReducedMotion ? false : 'position'}
+                  initial={
+                    isNewEntry
+                      ? prefersReducedMotion
+                        ? { opacity: 0 }
+                        : { opacity: 0, x: -12, y: -8 }
+                      : false
+                  }
+                  animate={{ opacity: 1, x: 0, y: 0 }}
+                  exit={
+                    prefersReducedMotion
+                      ? { opacity: 0, transition: { duration: 0.12 } }
+                      : { opacity: 0, x: 12, transition: { duration: 0.18 } }
+                  }
+                  transition={{
+                    duration: prefersReducedMotion ? 0.12 : DS_DURATION.smooth,
+                    ease: DS_EASE,
+                  }}
+                  className="py-4 sm:py-5 space-y-2 transition-colors duration-150"
+                >
                 <div className="flex items-start justify-between gap-3 sm:gap-4">
                   <div className="flex items-start gap-3 min-w-0">
                     <span
                       className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-                        entry.partnerKey === 'A'
-                          ? 'bg-[#E86A52]/12 dark:bg-[#E86A52]/20 text-[#D1533C] dark:text-[#E86A52]'
-                          : 'bg-[#1A6B8A]/12 dark:bg-[#2D8FB3]/20 text-[#1A6B8A] dark:text-[#2D8FB3]'
+                        DS_PARTNER_STYLES[entry.partnerKey].iconBadge
                       }`}
                     >
                       {getSourceIcon(categoryLabel)}
@@ -186,9 +245,7 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-[#5B6B79] dark:text-[#9DB0C0]">
                         <span
                           className={`font-semibold ${
-                            entry.partnerKey === 'A'
-                              ? 'text-[#D1533C] dark:text-[#E86A52]'
-                              : 'text-[#1A6B8A] dark:text-[#2D8FB3]'
+                            DS_PARTNER_STYLES[entry.partnerKey].textAccent
                           }`}
                         >
                           {entry.partnerName}
@@ -241,14 +298,14 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                       <button
                         type="button"
                         onClick={() => handleDelete(entry.id)}
-                        className="min-h-[44px] px-3 rounded-full bg-[#D1533C] text-xs font-semibold text-white hover:bg-[#B8432E] transition-colors"
+                        className="min-h-[44px] px-3 rounded-full bg-[#D1533C] text-xs font-semibold text-white hover:bg-[#B8432E] active:scale-[0.98] transition-all duration-150"
                       >
                         Conferma elimina
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmDeleteId(null)}
-                        className="min-h-[44px] px-2.5 text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0] transition-colors"
+                        className="ds-btn-ghost px-2.5"
                       >
                         Annulla
                       </button>
@@ -258,15 +315,16 @@ export const FeedTab: React.FC<FeedTabProps> = ({
                       type="button"
                       onClick={() => setConfirmDeleteId(entry.id)}
                       aria-label="Elimina versamento"
-                      className="min-h-[44px] min-w-[44px] -mr-2.5 flex items-center justify-center rounded-full text-[#5B6B79]/75 dark:text-[#9DB0C0]/75 hover:text-[#D1533C] dark:hover:text-[#E86A52] hover:bg-[#E86A52]/10 transition-colors"
+                      className="ds-btn-icon -mr-2.5 hover:text-[#D1533C] dark:hover:text-[#E86A52] hover:bg-[#E86A52]/10"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   )}
                 </div>
-              </article>
-            );
-          })}
+                </motion.article>
+              );
+            })}
+          </AnimatePresence>
         </div>
       )}
     </div>
