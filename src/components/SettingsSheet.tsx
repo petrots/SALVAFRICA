@@ -61,7 +61,11 @@ interface SettingsSheetProps {
   onUpdateNotifPrefs: (next: NotificationPreferences) => void;
   pushSubscribed: boolean;
   persistentVapid: boolean | null;
-  onEnablePush: () => Promise<{ ok: boolean; error?: string }>;
+  onEnablePush: () => Promise<{
+    ok: boolean;
+    error?: string;
+    needsSessionRefresh?: boolean;
+  }>;
   onDisablePush: () => Promise<void>;
 }
 
@@ -96,6 +100,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
   const [testingPush, setTestingPush] = useState(false);
   const [pushMessage, setPushMessage] = useState('');
   const [pushError, setPushError] = useState('');
+  const [pushNeedsRefresh, setPushNeedsRefresh] = useState(false);
 
   // Category management states
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -128,6 +133,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
     setCategoryError('');
     setPushMessage('');
     setPushError('');
+    setPushNeedsRefresh(false);
     setEnvTick((t) => t + 1);
 
     const refreshEnv = () => setEnvTick((t) => t + 1);
@@ -159,6 +165,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
     setPushBusy(true);
     setPushMessage('');
     setPushError('');
+    setPushNeedsRefresh(false);
     try {
       if (pushSubscribed) {
         await onDisablePush();
@@ -167,8 +174,9 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
         const res = await onEnablePush();
         if (res.ok) {
           setPushMessage('Notifiche Push attivate su questo dispositivo.');
-        } else if (res.error) {
-          setPushError(res.error);
+        } else {
+          if (res.error) setPushError(res.error);
+          if (res.needsSessionRefresh) setPushNeedsRefresh(true);
         }
       }
     } finally {
@@ -181,6 +189,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
     setTestingPush(true);
     setPushMessage('');
     setPushError('');
+    setPushNeedsRefresh(false);
     try {
       const res = await sendTestPush(
         vault.id,
@@ -192,6 +201,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
         setPushMessage(res.message);
       } else {
         setPushError(res.message);
+        if (res.needsSessionRefresh) setPushNeedsRefresh(true);
       }
     } finally {
       setTestingPush(false);
@@ -651,12 +661,26 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                     </p>
                   )}
                   {pushError && (
-                    <p
-                      role="alert"
-                      className="text-xs font-medium text-[#D1533C] dark:text-[#E86A52]"
-                    >
-                      {pushError}
-                    </p>
+                    <div className="space-y-2">
+                      <p
+                        role="alert"
+                        className="text-xs font-medium text-[#D1533C] dark:text-[#E86A52]"
+                      >
+                        {pushError}
+                      </p>
+                      {pushNeedsRefresh && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.location.assign(`${window.location.origin}/?settings=1`);
+                          }}
+                          className="ds-btn-secondary w-full"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-[#1A6B8A] dark:text-[#2D8FB3]" />
+                          <span>Aggiorna sessione</span>
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
 

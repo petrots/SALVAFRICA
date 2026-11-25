@@ -95,7 +95,14 @@ export default function App() {
   });
   const [depositOpen, setDepositOpen] = useState(false);
   const [depositDefaultPhysical, setDepositDefaultPhysical] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('settings') === '1';
+    } catch {
+      return false;
+    }
+  });
 
   const openDepositSheet = (defaultPhysical = false) => {
     setDepositDefaultPhysical(defaultPhysical);
@@ -109,6 +116,19 @@ export default function App() {
       return false;
     }
   });
+
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('settings') || url.searchParams.has('notifications')) {
+        url.searchParams.delete('settings');
+        url.searchParams.delete('notifications');
+        window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+      }
+    } catch {
+      // Ignore history API errors
+    }
+  }, []);
   const [liveToast, setLiveToast] = useState<NotificationItem | null>(null);
 
   const [justDepositedKey, setJustDepositedKey] = useState(0);

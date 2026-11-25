@@ -2,11 +2,11 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { ExpirationPlugin } from 'workbox-expiration';
 import {
   cleanupOutdatedCaches,
-  createHandlerBoundToURL,
+  matchPrecache,
   precacheAndRoute,
 } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
-import { CacheFirst } from 'workbox-strategies';
+import { CacheFirst, NetworkFirst } from 'workbox-strategies';
 
 interface PrecacheEntryLike {
   url: string;
@@ -102,6 +102,46 @@ self.addEventListener('message', (event) => {
   }
 });
 
+// Network-first for page navigations (keeps proxy session cookies & HTML fresh; falls back to precached shell offline)
+const navigationStrategy = new NetworkFirst({
+  cacheName: 'pages-cache',
+  networkTimeoutSeconds: 4,
+  plugins: [
+    {
+      cacheWillUpdate: async ({ response }) => {
+        if (
+          !response ||
+          response.status !== 200 ||
+          response.redirected ||
+          response.url.includes('__cookie_check')
+        ) {
+          return null;
+        }
+        return response;
+      },
+    },
+  ],
+});
+
+registerRoute(
+  new NavigationRoute(
+    async (params) => {
+      try {
+        const response = await navigationStrategy.handle(params);
+        if (response) return response;
+      } catch {
+        // Offline or network timeout: fall back to precached shell below
+      }
+      const cachedShell = await matchPrecache('/index.html');
+      if (cachedShell) return cachedShell;
+      return Response.error();
+    },
+    {
+      denylist: [/^\/api\//, /^\/__cookie_check/],
+    }
+  )
+);
+
 try {
   const entries = self.__WB_MANIFEST;
   if (Array.isArray(entries) && entries.length > 0) {
@@ -110,18 +150,6 @@ try {
   }
 } catch {
   // Never block Service Worker activation on precache edge cases
-}
-
-// SPA offline navigation fallback (never intercept /api/* endpoints)
-try {
-  const handler = createHandlerBoundToURL('/index.html');
-  registerRoute(
-    new NavigationRoute(handler, {
-      denylist: [/^\/api\//],
-    })
-  );
-} catch {
-  // Dev mode may not precache /index.html directly
 }
 
 // Runtime caching for Google Fonts

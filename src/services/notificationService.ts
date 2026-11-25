@@ -225,24 +225,102 @@ export interface VapidConfigResponse {
   persistent: boolean;
 }
 
-export async function fetchVapidConfig(): Promise<VapidConfigResponse | null> {
+export interface VapidConfigResult {
+  config: VapidConfigResponse | null;
+  needsSessionRefresh?: boolean;
+  error?: string;
+}
+
+export async function fetchVapidConfigDetailed(): Promise<VapidConfigResult> {
   try {
     const res = await fetch('/api/push/config', {
       cache: 'no-store',
       credentials: 'same-origin',
     });
-    if (!res.ok) return null;
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) return null;
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+
+    if (
+      res.redirected ||
+      res.url.includes('__cookie_check') ||
+      contentType.includes('text/html')
+    ) {
+      return {
+        config: null,
+        needsSessionRefresh: true,
+        error:
+          'Sessione del browser da aggiornare per collegare il servizio Push. Tocca “Aggiorna sessione” qui sotto e poi riprova.',
+      };
+    }
+
+    if (!res.ok) {
+      return {
+        config: null,
+        error: `Servizio Push momentaneamente non disponibile (HTTP ${res.status}).`,
+      };
+    }
+
+    if (!contentType.includes('application/json')) {
+      return {
+        config: null,
+        needsSessionRefresh: true,
+        error:
+          'Risposta imprevista dal server Push: aggiorna la sessione e riprova.',
+      };
+    }
+
     const data = (await res.json()) as Partial<VapidConfigResponse>;
-    if (typeof data.publicKey !== 'string' || data.publicKey.length <= 20) return null;
+    if (typeof data.publicKey !== 'string' || data.publicKey.length <= 20) {
+      return {
+        config: null,
+        error: 'Configurazione VAPID del server incompleta.',
+      };
+    }
+
     return {
-      publicKey: data.publicKey,
-      persistent: Boolean(data.persistent),
+      config: {
+        publicKey: data.publicKey,
+        persistent: Boolean(data.persistent),
+      },
     };
-  } catch {
-    return null;
+  } catch (err) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return {
+        config: null,
+        error: 'Sei offline: riconnettiti a Internet per attivare le notifiche Push.',
+      };
+    }
+
+    try {
+      const probe = await fetch('/api/push/config', {
+        cache: 'no-store',
+        credentials: 'same-origin',
+        redirect: 'manual',
+      });
+      if (probe.type === 'opaqueredirect' || probe.status === 0) {
+        return {
+          config: null,
+          needsSessionRefresh: true,
+          error:
+            'Sessione del browser da aggiornare per collegare il servizio Push. Tocca “Aggiorna sessione” qui sotto e poi riprova.',
+        };
+      }
+    } catch {
+      // Fall through to generic connectivity message
+    }
+
+    const detail = err instanceof Error ? err.message.slice(0, 80) : '';
+    return {
+      config: null,
+      error: detail
+        ? `Servizio Push temporaneamente non raggiungibile (${detail}).`
+        : 'Servizio Push temporaneamente non raggiungibile.',
+    };
   }
+}
+
+export async function fetchVapidConfig(): Promise<VapidConfigResponse | null> {
+  const result = await fetchVapidConfigDetailed();
+  return result.config;
 }
 
 async function waitForServiceWorkerReady(
@@ -401,7 +479,12 @@ export async function subscribeDeviceToPush(
   vaultId: string,
   partnerKey: PartnerKey,
   prefs: NotificationPreferences
-): Promise<{ ok: boolean; error?: string; persistentVapid?: boolean }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  persistentVapid?: boolean;
+  needsSessionRefresh?: boolean;
+}> {
   const env = getPushEnvironmentStatus();
   if (env.isInIframe) {
     return {
@@ -447,11 +530,13 @@ export async function subscribeDeviceToPush(
     };
   }
 
-  const vapidConfig = await fetchVapidConfig();
+  const vapidResult = await fetchVapidConfigDetailed();
+  const vapidConfig = vapidResult.config;
   if (!vapidConfig) {
     return {
       ok: false,
-      error: 'Servizio Push temporaneamente non raggiungibile.',
+      needsSessionRefresh: vapidResult.needsSessionRefresh,
+      error: vapidResult.error || 'Servizio Push temporaneamente non raggiungibile.',
     };
   }
 
@@ -719,7 +804,20 @@ async function postTestPushRequest(
     }),
   });
 
-  if (res.ok) {
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  if (
+    res.redirected ||
+    res.url.includes('__cookie_check') ||
+    contentType.includes('text/html')
+  ) {
+    return {
+      ok: false,
+      error:
+        'Sessione del browser da aggiornare: ricarica SALVAFRICA e riprova il test.',
+    };
+  }
+
+  if (res.ok && contentType.includes('application/json')) {
     return { ok: true };
   }
 
@@ -741,13 +839,19 @@ export async function sendTestPush(
   partnerName: string,
   partnerKey: PartnerKey,
   prefs: NotificationPreferences
-): Promise<{ ok: boolean; message: string; recovered?: boolean }> {
+): Promise<{
+  ok: boolean;
+  message: string;
+  recovered?: boolean;
+  needsSessionRefresh?: boolean;
+}> {
   let activeSub = await getActiveBrowserPushSubscription();
   if (!activeSub) {
     const resub = await subscribeDeviceToPush(vaultId, partnerKey, prefs);
     if (!resub.ok) {
       return {
         ok: false,
+        needsSessionRefresh: resub.needsSessionRefresh,
         message: resub.error || 'Attiva prima le notifiche Push su questo dispositivo.',
       };
     }

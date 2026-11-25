@@ -36,7 +36,11 @@ interface NotificationsSheetProps {
   currentPartnerKey: PartnerKey;
   onChangePartnerKey: (key: PartnerKey) => void;
   pushSubscribed: boolean;
-  onEnablePush: () => Promise<{ ok: boolean; error?: string }>;
+  onEnablePush: () => Promise<{
+    ok: boolean;
+    error?: string;
+    needsSessionRefresh?: boolean;
+  }>;
   onOpenSettings: () => void;
   onNavigateTab: (tab: 'home' | 'feed') => void;
 }
@@ -91,6 +95,7 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
 
   const [enablingPush, setEnablingPush] = useState(false);
   const [pushFeedback, setPushFeedback] = useState('');
+  const [pushNeedsRefresh, setPushNeedsRefresh] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
 
   const envStatus = getPushEnvironmentStatus();
@@ -102,10 +107,12 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
     if (enablingPush) return;
     setEnablingPush(true);
     setPushFeedback('');
+    setPushNeedsRefresh(false);
     try {
       const result = await onEnablePush();
-      if (!result.ok && result.error) {
-        setPushFeedback(result.error);
+      if (!result.ok) {
+        if (result.error) setPushFeedback(result.error);
+        if (result.needsSessionRefresh) setPushNeedsRefresh(true);
       }
     } finally {
       setEnablingPush(false);
@@ -288,9 +295,22 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
               )}
 
               {pushFeedback && (
-                <p className="text-[11px] font-medium text-[#D1533C] dark:text-[#E86A52]">
-                  {pushFeedback}
-                </p>
+                <div className="space-y-1.5">
+                  <p className="text-[11px] font-medium text-[#D1533C] dark:text-[#E86A52]">
+                    {pushFeedback}
+                  </p>
+                  {pushNeedsRefresh && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.location.assign(`${window.location.origin}/?notifications=1`);
+                      }}
+                      className="ds-btn-secondary w-full"
+                    >
+                      <span>Aggiorna sessione</span>
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
