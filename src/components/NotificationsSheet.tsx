@@ -242,7 +242,21 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
 
               {!pushSubscribed && (
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                  {envStatus.isIOS && !envStatus.isStandalone ? (
+                  {envStatus.isInIframe ? (
+                    <>
+                      <span className="text-[11px] text-[#5B6B79] dark:text-[#9DB0C0]">
+                        Apri l’app nella sua scheda diretta per attivare le Push di sistema.
+                      </span>
+                      <a
+                        href={window.location.origin}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ds-btn-primary"
+                      >
+                        Apri scheda
+                      </a>
+                    </>
+                  ) : envStatus.isIOS && !envStatus.isStandalone ? (
                     <p className="text-[11px] leading-relaxed text-[#5B6B79] dark:text-[#9DB0C0]">
                       Su iPhone: aggiungi l’app alla schermata Home (Condividi →
                       Aggiungi a schermata Home) per ricevere avvisi Push anche ad app
@@ -255,34 +269,21 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
                         Notifiche Push bloccate nelle impostazioni del browser.
                       </span>
                     </p>
-                  ) : (
+                  ) : envStatus.supported ? (
                     <>
                       <span className="text-[11px] text-[#5B6B79] dark:text-[#9DB0C0]">
-                        {envStatus.isInIframe
-                          ? 'Apri l’app nella sua finestra per attivare le Push di sistema.'
-                          : 'Ricevi avvisi Push sul telefono anche ad app chiusa.'}
+                        Ricevi avvisi Push sul telefono anche ad app chiusa.
                       </span>
-                      {envStatus.isInIframe ? (
-                        <a
-                          href={window.location.href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="ds-btn-primary"
-                        >
-                          Apri scheda
-                        </a>
-                      ) : envStatus.supported ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleEnablePush()}
-                          disabled={enablingPush}
-                          className="ds-btn-primary"
-                        >
-                          {enablingPush ? 'Attivazione...' : 'Attiva Push'}
-                        </button>
-                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => void handleEnablePush()}
+                        disabled={enablingPush}
+                        className="ds-btn-primary"
+                      >
+                        {enablingPush ? 'Attivazione...' : 'Attiva Push'}
+                      </button>
                     </>
-                  )}
+                  ) : null}
                 </div>
               )}
 

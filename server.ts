@@ -470,6 +470,75 @@ async function startServer() {
   });
 
   if (!isProduction) {
+    let cachedDevSw: { code: string; mtimeMs: number } | null = null;
+    const swEntryPath = path.resolve(__dirname, 'src', 'sw.ts');
+
+    app.get('/sw.js', async (_req: Request, res: Response, next) => {
+      try {
+        const stat = fs.statSync(swEntryPath);
+        if (!cachedDevSw || cachedDevSw.mtimeMs !== stat.mtimeMs) {
+          const esbuild = await import('esbuild');
+          const built = await esbuild.build({
+            entryPoints: [swEntryPath],
+            bundle: true,
+            write: false,
+            format: 'iife',
+            platform: 'browser',
+            target: ['es2020', 'safari16'],
+            define: {
+              'self.__WB_MANIFEST': '[]',
+            },
+          });
+          const outputText = built.outputFiles?.[0]?.text;
+          if (!outputText) {
+            throw new Error('Empty service worker bundle');
+          }
+          cachedDevSw = { code: outputText, mtimeMs: stat.mtimeMs };
+        }
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Service-Worker-Allowed', '/');
+        res.type('application/javascript; charset=utf-8').send(cachedDevSw.code);
+      } catch (err) {
+        next(err);
+      }
+    });
+
+    app.get('/manifest.webmanifest', (_req: Request, res: Response) => {
+      res.setHeader('Cache-Control', 'no-store');
+      res.type('application/manifest+json; charset=utf-8').json({
+        id: '/',
+        name: 'SALVAFRICA — Salvadanaio Viaggio in Africa',
+        short_name: 'SALVAFRICA',
+        description:
+          'Salvadanaio condiviso di coppia per il viaggio in Africa finanziato solo da attività esterne extra.',
+        theme_color: '#FAF6F0',
+        background_color: '#FAF6F0',
+        display: 'standalone',
+        start_url: '/',
+        scope: '/',
+        icons: [
+          {
+            src: '/pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/pwa-maskable-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      });
+    });
+
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: {
@@ -501,7 +570,19 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distDir = path.resolve(__dirname, 'dist');
-    app.use(express.static(distDir));
+    app.use(
+      express.static(distDir, {
+        setHeaders(res, filePath) {
+          if (filePath.endsWith(`${path.sep}sw.js`)) {
+            res.setHeader('Cache-Control', 'no-store');
+            res.setHeader('Service-Worker-Allowed', '/');
+          } else if (filePath.endsWith(`${path.sep}manifest.webmanifest`)) {
+            res.setHeader('Cache-Control', 'no-store');
+            res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+          }
+        },
+      })
+    );
     app.get('/{*splat}', (_req: Request, res: Response) => {
       const indexHtml = path.join(distDir, 'index.html');
       if (fs.existsSync(indexHtml)) {

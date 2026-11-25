@@ -1,5 +1,4 @@
 import { createRoot } from 'react-dom/client';
-import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import './index.css';
@@ -26,7 +25,19 @@ document.addEventListener(
   { passive: false }
 );
 
-registerSW({ immediate: true });
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker
+    .register('/sw.js', { scope: '/', updateViaCache: 'none' })
+    .then((registration) => {
+      if (registration.waiting) {
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+      void registration.update().catch(() => {});
+    })
+    .catch(() => {
+      // Errors are surfaced cleanly when user enables push notifications
+    });
+}
 
 createRoot(document.getElementById('root')!).render(
   <ErrorBoundary>

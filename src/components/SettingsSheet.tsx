@@ -41,6 +41,7 @@ import {
   Contribution,
   NotificationPreferences,
   PartnerKey,
+  PushSubscriptionRecord,
   Vault,
 } from '../types';
 import { getSourceIcon } from '../utils/sourceIcons';
@@ -51,6 +52,7 @@ interface SettingsSheetProps {
   vault: Vault;
   categories: Category[];
   contributions: Contribution[];
+  pushSubscriptions: PushSubscriptionRecord[];
   isDark: boolean;
   onToggleTheme: () => void;
   currentPartnerKey: PartnerKey;
@@ -69,6 +71,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
   vault,
   categories,
   contributions,
+  pushSubscriptions,
   isDark,
   onToggleTheme,
   currentPartnerKey,
@@ -140,6 +143,16 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
   const envStatus = getPushEnvironmentStatus();
   const currentPartnerName =
     currentPartnerKey === 'A' ? vault.partnerAName : vault.partnerBName;
+
+  const partnerPushCounts = useMemo(() => {
+    const aEndpoints = new Set<string>();
+    const bEndpoints = new Set<string>();
+    for (const sub of pushSubscriptions) {
+      if (sub.partnerKey === 'A') aEndpoints.add(sub.endpoint);
+      else if (sub.partnerKey === 'B') bEndpoints.add(sub.endpoint);
+    }
+    return { a: aEndpoints.size, b: bEndpoints.size };
+  }, [pushSubscriptions]);
 
   const handleTogglePush = async () => {
     if (pushBusy) return;
@@ -406,34 +419,46 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                 </div>
 
                 {/* Device Partner Identity */}
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0]">
-                    Questo dispositivo è di
-                  </span>
-                  <div className="inline-flex items-center gap-1 rounded-full border ds-divider bg-[#F2ECE3]/65 dark:bg-[#162D42] p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => onChangePartnerKey('A')}
-                      className={`min-h-[40px] px-3.5 rounded-full text-xs font-semibold transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] ${
-                        currentPartnerKey === 'A'
-                          ? DS_PARTNER_STYLES.A.activeSegment
-                          : 'text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0]'
-                      }`}
-                    >
-                      {vault.partnerAName}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onChangePartnerKey('B')}
-                      className={`min-h-[40px] px-3.5 rounded-full text-xs font-semibold transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E86A52] ${
-                        currentPartnerKey === 'B'
-                          ? DS_PARTNER_STYLES.B.activeSegment
-                          : 'text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0]'
-                      }`}
-                    >
-                      {vault.partnerBName}
-                    </button>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-semibold text-[#5B6B79] dark:text-[#9DB0C0]">
+                      Questo dispositivo è di
+                    </span>
+                    <div className="inline-flex items-center gap-1 rounded-full border ds-divider bg-[#F2ECE3]/65 dark:bg-[#162D42] p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => onChangePartnerKey('A')}
+                        className={`min-h-[40px] px-3.5 rounded-full text-xs font-semibold transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A6B8A] ${
+                          currentPartnerKey === 'A'
+                            ? DS_PARTNER_STYLES.A.activeSegment
+                            : 'text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0]'
+                        }`}
+                      >
+                        {vault.partnerAName}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onChangePartnerKey('B')}
+                        className={`min-h-[40px] px-3.5 rounded-full text-xs font-semibold transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E86A52] ${
+                          currentPartnerKey === 'B'
+                            ? DS_PARTNER_STYLES.B.activeSegment
+                            : 'text-[#5B6B79] dark:text-[#9DB0C0] hover:text-[#122638] dark:hover:text-[#FAF6F0]'
+                        }`}
+                      >
+                        {vault.partnerBName}
+                      </button>
+                    </div>
                   </div>
+                  <p className="text-[11px] text-[#5B6B79] dark:text-[#9DB0C0]">
+                    Dispositivi Push collegati:{' '}
+                    <span className="font-semibold text-[#122638] dark:text-[#FAF6F0]">
+                      {vault.partnerAName} ({partnerPushCounts.a})
+                    </span>
+                    {' · '}
+                    <span className="font-semibold text-[#122638] dark:text-[#FAF6F0]">
+                      {vault.partnerBName} ({partnerPushCounts.b})
+                    </span>
+                  </p>
                 </div>
 
                 {/* Permission Request Banner & Device Push Controls */}
@@ -488,6 +513,33 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                         )}
                       </div>
                     </div>
+                  ) : envStatus.isInIframe ? (
+                    <div
+                      role="region"
+                      aria-label="Richiesta permessi notifiche"
+                      className="rounded-2xl border border-[#E6DDD1] dark:border-[#264561] bg-[#F2ECE3]/65 dark:bg-[#162D42]/65 px-4 py-3.5 space-y-3"
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <AlertCircle className="w-4 h-4 text-[#E86A52] shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0]">
+                            Apri l’app fuori dall’anteprima
+                          </p>
+                          <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] mt-0.5 leading-relaxed">
+                            Il browser blocca i permessi Push dentro una finestra incorporata. Apri il link diretto in Safari/Chrome o installa SALVAFRICA sulla schermata Home.
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href={shareUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full ds-btn-primary"
+                      >
+                        <Bell className="w-4 h-4" />
+                        <span>Apri in una nuova scheda</span>
+                      </a>
+                    </div>
                   ) : envStatus.isIOS && !envStatus.isStandalone ? (
                     <div
                       role="region"
@@ -534,33 +586,6 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
                           </span>
                         </li>
                       </ol>
-                    </div>
-                  ) : envStatus.isInIframe ? (
-                    <div
-                      role="region"
-                      aria-label="Richiesta permessi notifiche"
-                      className="rounded-2xl border border-[#E6DDD1] dark:border-[#264561] bg-[#F2ECE3]/65 dark:bg-[#162D42]/65 px-4 py-3.5 space-y-3"
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <AlertCircle className="w-4 h-4 text-[#E86A52] shrink-0 mt-0.5" />
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-[#122638] dark:text-[#FAF6F0]">
-                            Apri l’app fuori dall’anteprima
-                          </p>
-                          <p className="text-xs text-[#5B6B79] dark:text-[#9DB0C0] mt-0.5 leading-relaxed">
-                            Il browser blocca i permessi Push dentro una finestra incorporata. Apri il link diretto o installa SALVAFRICA sulla schermata Home per attivarle.
-                          </p>
-                        </div>
-                      </div>
-                      <a
-                        href={shareUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full ds-btn-primary"
-                      >
-                        <Bell className="w-4 h-4" />
-                        <span>Apri in una nuova scheda</span>
-                      </a>
                     </div>
                   ) : envStatus.permission === 'denied' ? (
                     <div

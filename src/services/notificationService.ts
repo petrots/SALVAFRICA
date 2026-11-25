@@ -23,6 +23,7 @@ const PARTNER_STORAGE_KEY = 'salvafrica_partner_key';
 const NOTIF_PREFS_STORAGE_KEY = 'salvafrica_notif_prefs';
 const PUSH_SUB_ID_STORAGE_KEY = 'salvafrica_push_sub_id';
 const PUSH_OPT_OUT_STORAGE_KEY = 'salvafrica_push_opt_out';
+const VAPID_PUB_STORAGE_KEY = 'salvafrica_vapid_pub';
 
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPreferences = {
   notifyDeposits: true,
@@ -121,6 +122,27 @@ export function setPushOptedOut(optedOut: boolean): void {
   }
 }
 
+function getStoredVapidKey(): string | null {
+  try {
+    const value = window.localStorage.getItem(VAPID_PUB_STORAGE_KEY);
+    return value && value.length > 20 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredVapidKey(publicKey: string | null): void {
+  try {
+    if (publicKey) {
+      window.localStorage.setItem(VAPID_PUB_STORAGE_KEY, publicKey);
+    } else {
+      window.localStorage.removeItem(VAPID_PUB_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage restrictions
+  }
+}
+
 export interface PushEnvironmentStatus {
   supported: boolean;
   permission: NotificationPermission | 'unsupported';
@@ -205,10 +227,15 @@ export interface VapidConfigResponse {
 
 export async function fetchVapidConfig(): Promise<VapidConfigResponse | null> {
   try {
-    const res = await fetch('/api/push/config', { cache: 'no-store' });
+    const res = await fetch('/api/push/config', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
     if (!res.ok) return null;
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) return null;
     const data = (await res.json()) as Partial<VapidConfigResponse>;
-    if (typeof data.publicKey !== 'string' || !data.publicKey) return null;
+    if (typeof data.publicKey !== 'string' || data.publicKey.length <= 20) return null;
     return {
       publicKey: data.publicKey,
       persistent: Boolean(data.persistent),
@@ -225,24 +252,31 @@ async function waitForServiceWorkerReady(
     throw new Error('Service Worker non supportato su questo dispositivo.');
   }
 
-  const existing = await navigator.serviceWorker.getRegistration();
-  if (!existing) {
-    const primaryUrl = import.meta.env.DEV ? '/dev-sw.js?dev-sw' : '/sw.js';
-    const primaryOptions: RegistrationOptions = import.meta.env.DEV
-      ? { scope: '/', type: 'module' }
-      : { scope: '/' };
+  let reg =
+    (await navigator.serviceWorker.getRegistration('/')) ??
+    (await navigator.serviceWorker.getRegistration());
+
+  const currentScriptUrl =
+    reg?.active?.scriptURL ||
+    reg?.waiting?.scriptURL ||
+    reg?.installing?.scriptURL ||
+    '';
+
+  const hasValidSwScript = currentScriptUrl.endsWith('/sw.js');
+  const hasAnyWorker = Boolean(reg?.active || reg?.waiting || reg?.installing);
+
+  if (!reg || !hasValidSwScript || !hasAnyWorker) {
+    reg = await navigator.serviceWorker.register('/sw.js', {
+      scope: '/',
+      updateViaCache: 'none',
+    });
+  }
+
+  if (reg.waiting) {
     try {
-      await navigator.serviceWorker.register(primaryUrl, primaryOptions);
-    } catch (primaryErr) {
-      const fallbackUrl = import.meta.env.DEV ? '/sw.js' : '/dev-sw.js?dev-sw';
-      const fallbackOptions: RegistrationOptions = import.meta.env.DEV
-        ? { scope: '/' }
-        : { scope: '/', type: 'module' };
-      try {
-        await navigator.serviceWorker.register(fallbackUrl, fallbackOptions);
-      } catch {
-        throw primaryErr;
-      }
+      reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    } catch {
+      // Ignore postMessage failure
     }
   }
 
@@ -369,6 +403,14 @@ export async function subscribeDeviceToPush(
   prefs: NotificationPreferences
 ): Promise<{ ok: boolean; error?: string; persistentVapid?: boolean }> {
   const env = getPushEnvironmentStatus();
+  if (env.isInIframe) {
+    return {
+      ok: false,
+      error:
+        'Apri SALVAFRICA in una scheda diretta del browser (fuori dall’anteprima) per attivare le notifiche Push.',
+    };
+  }
+
   if (!env.supported) {
     if (env.isIOS && !env.isStandalone) {
       return {
@@ -383,6 +425,7 @@ export async function subscribeDeviceToPush(
     };
   }
 
+  // Must happen directly from user interaction gesture on iOS Safari
   let permission = window.Notification.permission;
   if (permission === 'default') {
     try {
@@ -391,7 +434,7 @@ export async function subscribeDeviceToPush(
       return {
         ok: false,
         error:
-          'Impossibile richiedere il permesso qui. Apri SALVAFRICA in una finestra dedicata o come app dalla schermata Home.',
+          'Impossibile richiedere il permesso qui. Apri SALVAFRICA direttamente dal browser o dalla schermata Home.',
       };
     }
   }
@@ -417,21 +460,48 @@ export async function subscribeDeviceToPush(
     let subscription = await registration.pushManager.getSubscription();
 
     const expectedKey = urlBase64ToUint8Array(vapidConfig.publicKey);
-    if (subscription?.options?.applicationServerKey) {
-      const existingKeyB64 = arrayBufferToBase64Url(
-        subscription.options.applicationServerKey
-      );
-      if (existingKeyB64 && existingKeyB64 !== vapidConfig.publicKey) {
+    const storedVapid = getStoredVapidKey();
+
+    if (subscription) {
+      const existingKeyB64 = subscription.options?.applicationServerKey
+        ? arrayBufferToBase64Url(subscription.options.applicationServerKey)
+        : '';
+      const keyConflict =
+        (existingKeyB64 && existingKeyB64 !== vapidConfig.publicKey) ||
+        (storedVapid && storedVapid !== vapidConfig.publicKey) ||
+        (!existingKeyB64 && !storedVapid);
+
+      if (keyConflict) {
         await subscription.unsubscribe().catch(() => {});
         subscription = null;
       }
     }
 
     if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: expectedKey,
-      });
+      try {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: expectedKey,
+        });
+      } catch (subErr) {
+        const subErrName = subErr instanceof Error ? subErr.name : '';
+        const subErrMsg = subErr instanceof Error ? subErr.message : '';
+        if (
+          subErrName === 'InvalidStateError' ||
+          /applicationServerKey|existing subscription|already/i.test(subErrMsg)
+        ) {
+          const staleSub = await registration.pushManager.getSubscription().catch(() => null);
+          if (staleSub) {
+            await staleSub.unsubscribe().catch(() => {});
+          }
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: expectedKey,
+          });
+        } else {
+          throw subErr;
+        }
+      }
     }
 
     const p256dh = arrayBufferToBase64Url(subscription.getKey('p256dh'));
@@ -454,15 +524,17 @@ export async function subscribeDeviceToPush(
       auth
     );
 
+    setStoredVapidKey(vapidConfig.publicKey);
     setPushOptedOut(false);
     return { ok: true, persistentVapid: vapidConfig.persistent };
   } catch (err) {
     console.error('[push/subscribe] Failed:', err);
+    const errName = err instanceof Error ? err.name : '';
     const message = err instanceof Error ? err.message : '';
     if (/Service Worker|timeout|PushManager/i.test(message)) {
       return {
         ok: false,
-        error: 'Service Worker non ancora pronto: ricarica SALVAFRICA e riprova.',
+        error: `Service Worker non ancora pronto: ricarica SALVAFRICA e riprova (${message}).`,
       };
     }
     if (/operationType/i.test(message)) {
@@ -471,10 +543,19 @@ export async function subscribeDeviceToPush(
         error: 'Impossibile salvare la registrazione notifiche nel database.',
       };
     }
+    if (errName === 'NotAllowedError') {
+      return {
+        ok: false,
+        error:
+          'Permesso notifiche bloccato dal sistema o finestra in modalità privata.',
+      };
+    }
+    const detail = [errName, message].filter(Boolean).join(': ').slice(0, 120);
     return {
       ok: false,
-      error:
-        'Attivazione Push non riuscita. Assicurati di aprire l’app direttamente (fuori dall’anteprima) o dalla schermata Home.',
+      error: detail
+        ? `Attivazione Push non riuscita (${detail}). Assicurati di aprire SALVAFRICA direttamente o dalla schermata Home.`
+        : 'Attivazione Push non riuscita. Assicurati di aprire SALVAFRICA direttamente o dalla schermata Home.',
     };
   }
 }
@@ -492,15 +573,19 @@ export async function ensurePushSubscriptionSynced(
   ]);
   const persistentVapid = vapidConfig ? vapidConfig.persistent : null;
 
-  if (!env.supported || env.permission !== 'granted' || isPushOptedOut()) {
+  if (!env.supported || env.permission !== 'granted' || isPushOptedOut() || env.isInIframe) {
     return { subscribed: false, persistentVapid };
   }
 
   const subId = getDeviceSubscriptionId();
+  const storedVapid = getStoredVapidKey();
 
   // Check if local subscription matches server's active VAPID public key
   let keyMismatch = false;
   if (sub && vapidConfig) {
+    if (storedVapid && storedVapid !== vapidConfig.publicKey) {
+      keyMismatch = true;
+    }
     if (sub.options?.applicationServerKey) {
       const existingKeyB64 = arrayBufferToBase64Url(sub.options.applicationServerKey);
       if (existingKeyB64 && existingKeyB64 !== vapidConfig.publicKey) {
@@ -515,6 +600,10 @@ export async function ensurePushSubscriptionSynced(
       subscribed: res.ok,
       persistentVapid: res.persistentVapid ?? persistentVapid,
     };
+  }
+
+  if (vapidConfig && !storedVapid) {
+    setStoredVapidKey(vapidConfig.publicKey);
   }
 
   // Browser has a valid subscription matching server VAPID key: ensure Firestore matches
@@ -582,6 +671,7 @@ export async function syncSubscriptionPreferences(
 
 export async function unsubscribeDeviceFromPush(vaultId: string): Promise<void> {
   setPushOptedOut(true);
+  setStoredVapidKey(null);
   try {
     const activeSub = await getActiveBrowserPushSubscription();
     if (activeSub) {
@@ -617,6 +707,7 @@ async function postTestPushRequest(
 
   const res = await fetch('/api/push/test', {
     method: 'POST',
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       partnerName,
@@ -674,7 +765,8 @@ export async function sendTestPush(
     if (firstAttempt.ok) {
       return {
         ok: true,
-        message: 'Notifica di prova inviata! Dovresti vederla tra un istante.',
+        message:
+          'Notifica di prova inviata! Se non compare, verifica che Full immersion / Non disturbare sia disattivato.',
       };
     }
 
@@ -833,6 +925,7 @@ export async function dispatchActivityNotification(
 
     fetch('/api/push/send', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         subscriptions: targetSubs.map((s) => ({

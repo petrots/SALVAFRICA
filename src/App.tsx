@@ -1005,6 +1005,7 @@ export default function App() {
         vault={vault}
         categories={sortedCategories}
         contributions={contributions}
+        pushSubscriptions={pushSubscriptions}
         isDark={isDark}
         onToggleTheme={() => setIsDark((prev) => !prev)}
         currentPartnerKey={currentPartnerKey}

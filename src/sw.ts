@@ -85,8 +85,9 @@ interface PushSubscriptionChangeEventLike {
 
 declare const self: SWGlobalScope;
 
-self.addEventListener('install', () => {
-  void self.skipWaiting();
+self.addEventListener('install', (event) => {
+  const evt = event as { waitUntil: (p: Promise<unknown>) => void };
+  evt.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (event) => {
@@ -94,8 +95,22 @@ self.addEventListener('activate', (event) => {
   evt.waitUntil(self.clients.claim());
 });
 
-precacheAndRoute(self.__WB_MANIFEST);
-cleanupOutdatedCaches();
+self.addEventListener('message', (event) => {
+  const msgEvent = event as { data?: { type?: string } };
+  if (msgEvent.data?.type === 'SKIP_WAITING') {
+    void self.skipWaiting();
+  }
+});
+
+try {
+  const entries = self.__WB_MANIFEST;
+  if (Array.isArray(entries) && entries.length > 0) {
+    precacheAndRoute(entries);
+    cleanupOutdatedCaches();
+  }
+} catch {
+  // Never block Service Worker activation on precache edge cases
+}
 
 // SPA offline navigation fallback (never intercept /api/* endpoints)
 try {

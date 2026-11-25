@@ -15,7 +15,7 @@ export default defineConfig(() => {
         srcDir: 'src',
         filename: 'sw.ts',
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+        injectRegister: null,
         manifest: {
           id: '/',
           name: 'SALVAFRICA — Salvadanaio Viaggio in Africa',
@@ -50,12 +50,25 @@ export default defineConfig(() => {
         injectManifest: {
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,woff,woff2}'],
+          globIgnores: ['manifest.webmanifest'],
         },
         devOptions: {
-          enabled: true,
-          type: 'module',
+          enabled: false,
         },
       }),
+      {
+        name: 'dev-manifest-link',
+        apply: 'serve',
+        transformIndexHtml() {
+          return [
+            {
+              tag: 'link',
+              attrs: { rel: 'manifest', href: '/manifest.webmanifest' },
+              injectTo: 'head',
+            },
+          ];
+        },
+      },
       // Copies src/assets into dist/ so root-relative URLs like
       // "/src/assets/images/..." (e.g. generate_image output) still resolve
       // in production builds. Do not remove.
