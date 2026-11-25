@@ -253,6 +253,13 @@ export async function fetchVapidConfigDetailed(): Promise<VapidConfigResult> {
     }
 
     if (!res.ok) {
+      if (res.status === 404) {
+        return {
+          config: null,
+          error:
+            'Server notifiche Push non attivo su questo link statico (HTTP 404). Apri l’app dal link completo su Cloud Run o dall’anteprima attiva per inviare Push.',
+        };
+      }
       return {
         config: null,
         error: `Servizio Push momentaneamente non disponibile (HTTP ${res.status}).`,
